@@ -7,16 +7,6 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM composer:2 AS vendor
-WORKDIR /app
-COPY composer.json composer.lock ./
-RUN composer install \
-    --no-dev \
-    --no-scripts \
-    --no-interaction \
-    --prefer-dist \
-    --optimize-autoloader
-
 FROM php:8.3-cli-alpine
 WORKDIR /app
 
@@ -35,10 +25,16 @@ RUN apk add --no-cache \
     intl \
     zip
 
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
 COPY . .
-COPY --from=vendor /app/vendor ./vendor
 COPY --from=assets /app/public/build ./public/build
 
+RUN composer install \
+    --no-dev \
+    --no-interaction \
+    --prefer-dist \
+    --optimize-autoloader
 RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache
 RUN php artisan package:discover --ansi
 
