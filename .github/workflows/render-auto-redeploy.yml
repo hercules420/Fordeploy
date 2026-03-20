@@ -1,0 +1,47 @@
+name: Render Auto Redeploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  validate-and-redeploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, bcmath, intl, pdo, pdo_pgsql
+          coverage: none
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare environment for tests
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          mkdir -p database
+          touch database/database.sqlite
+          php artisan migrate --force
+
+      - name: Run backend tests
+        run: php artisan test
+
+      - name: Trigger Render deploy hook
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "Missing GitHub secret: RENDER_DEPLOY_HOOK_URL"
+            exit 1
+          fi
+          curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
+          echo "Render deploy triggered successfully."
