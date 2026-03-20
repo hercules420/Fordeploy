@@ -52,7 +52,28 @@
             <div class="p-8">
                 @if(session('success'))
                 <div class="mb-6 p-4 bg-green-900/50 border border-green-700 rounded-lg text-green-400">
-                    {{ session('success') }}
+                    <p>{{ session('success') }}</p>
+
+                    @if(session('verification_url'))
+                    <div class="mt-3 flex flex-wrap items-center gap-2">
+                        <a
+                            href="{{ session('verification_url') }}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="inline-flex items-center rounded bg-green-700 px-3 py-2 text-xs font-semibold text-white hover:bg-green-600"
+                        >
+                            Open Verification Link
+                        </a>
+                        <button
+                            type="button"
+                            class="inline-flex items-center rounded bg-gray-700 px-3 py-2 text-xs font-semibold text-white hover:bg-gray-600"
+                            data-copy-target="verification-link"
+                        >
+                            Copy Verification Link
+                        </button>
+                        <input type="hidden" id="verification-link" value="{{ session('verification_url') }}">
+                    </div>
+                    @endif
                 </div>
                 @endif
 
@@ -77,27 +98,25 @@
         </main>
     </div>
     <script>
-        // Preserve scroll position in sidebar when navigating
+        // Preserve scroll position in sidebar when navigating.
         document.addEventListener('DOMContentLoaded', function() {
             const sidebar = document.querySelector('aside nav');
             const mainContent = document.querySelector('main');
-            
-            // Restore scroll positions on page load
+
             if (sidebar) {
                 const savedSidebarScroll = sessionStorage.getItem('sidebarScrollPos');
                 if (savedSidebarScroll) {
-                    sidebar.scrollTop = parseInt(savedSidebarScroll);
+                    sidebar.scrollTop = parseInt(savedSidebarScroll, 10);
                 }
             }
-            
+
             if (mainContent) {
                 const savedMainScroll = sessionStorage.getItem('mainScrollPos');
                 if (savedMainScroll) {
-                    mainContent.scrollTop = parseInt(savedMainScroll);
+                    mainContent.scrollTop = parseInt(savedMainScroll, 10);
                 }
             }
-            
-            // Save scroll positions on navigation
+
             const sidebarLinks = document.querySelectorAll('aside nav a');
             sidebarLinks.forEach(link => {
                 link.addEventListener('click', function() {
@@ -109,6 +128,29 @@
                     }
                 });
             });
+
+            const copyButton = document.querySelector('[data-copy-target="verification-link"]');
+            if (copyButton) {
+                copyButton.addEventListener('click', async function() {
+                    const input = document.getElementById('verification-link');
+                    if (!input || !input.value) {
+                        return;
+                    }
+
+                    try {
+                        await navigator.clipboard.writeText(input.value);
+                        copyButton.textContent = 'Copied!';
+                        setTimeout(() => {
+                            copyButton.textContent = 'Copy Verification Link';
+                        }, 1200);
+                    } catch (error) {
+                        copyButton.textContent = 'Copy Failed';
+                        setTimeout(() => {
+                            copyButton.textContent = 'Copy Verification Link';
+                        }, 1200);
+                    }
+                });
+            }
         });
     </script>
     @stack('scripts')

@@ -179,11 +179,13 @@ class EmployeeController extends Controller
             $message = 'Employee added successfully, but verification email could not be sent right now. Please check mail settings and resend later.';
         }
 
+        $redirect = redirect()->route('employees.index')->with('success', $message);
+
         if ($verificationUrl) {
-            $message .= ' DEV verification link: ' . $verificationUrl;
+            $redirect->with('verification_url', $verificationUrl);
         }
 
-        return redirect()->route('employees.index')->with('success', $message);
+        return $redirect;
     }
 
     private function generateEmployeeId(int $farmOwnerId): string
