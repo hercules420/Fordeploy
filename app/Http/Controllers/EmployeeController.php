@@ -90,6 +90,7 @@ class EmployeeController extends Controller
         $farmOwner = $this->getFarmOwner();
         $verificationUrl = null;
         $verificationEmailSent = false;
+        $verificationEmailError = null;
 
         $validated = $request->validate([
             'first_name' => 'required|string|max:100',
@@ -119,7 +120,7 @@ class EmployeeController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        DB::transaction(function () use ($validated, $farmOwner, &$verificationUrl, &$verificationEmailSent) {
+        DB::transaction(function () use ($validated, $farmOwner, &$verificationUrl, &$verificationEmailSent, &$verificationEmailError) {
             $employeeUser = User::create([
                 'name' => trim($validated['first_name'] . ' ' . $validated['last_name']),
                 'email' => $validated['email'],
@@ -133,6 +134,7 @@ class EmployeeController extends Controller
                 $employeeUser->sendEmailVerificationNotification();
                 $verificationEmailSent = true;
             } catch (\Throwable $e) {
+                $verificationEmailError = $e->getMessage();
                 Log::warning('Employee verification email failed to send', [
                     'employee_user_id' => $employeeUser->id,
                     'email' => $employeeUser->email,
@@ -140,7 +142,7 @@ class EmployeeController extends Controller
                 ]);
             }
 
-            if (config('mail.default') === 'log') {
+            if (config('mail.default') === 'log' || !$verificationEmailSent) {
                 $verificationUrl = URL::temporarySignedRoute(
                     'verification.verify',
                     now()->addMinutes(60),
@@ -177,6 +179,10 @@ class EmployeeController extends Controller
             $message = 'Employee added successfully. Verification email sent to their account email.';
         } else {
             $message = 'Employee added successfully, but verification email could not be sent right now. Please check mail settings and resend later.';
+            if ($verificationEmailError) {
+                $safeError = Str::limit(preg_replace('/\s+/', ' ', trim($verificationEmailError)), 220);
+                $message .= ' Mail error: ' . $safeError;
+            }
         }
 
         $redirect = redirect()->route('employees.index')->with('success', $message);
