@@ -12,6 +12,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Respect Render reverse proxy headers so HTTPS/session handling is consistent.
+        $middleware->trustProxies(at: '*');
+
         $middleware->alias([
             'mobile.auth' => \App\Http\Middleware\AuthenticateMobileToken::class,
             'role' => \App\Http\Middleware\EnsureUserRole::class,

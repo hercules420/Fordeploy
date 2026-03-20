@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\URL;
 
@@ -30,9 +32,26 @@ class EmployeeController extends Controller
     public function index(Request $request)
     {
         $farmOwner = $this->getFarmOwner();
+
+        $selectColumns = [
+            'id',
+            'employee_id',
+            'first_name',
+            'last_name',
+            'department',
+            'position',
+            'hire_date',
+            'daily_rate',
+            'status',
+        ];
+
+        // Guard against environments where the performance_rating migration has not run yet.
+        if (Schema::hasColumn('employees', 'performance_rating')) {
+            $selectColumns[] = 'performance_rating';
+        }
         
         $query = Employee::byFarmOwner($farmOwner->id)
-            ->select('id', 'employee_id', 'first_name', 'last_name', 'department', 'position', 'hire_date', 'daily_rate', 'performance_rating', 'status');
+            ->select($selectColumns);
 
         if ($request->filled('department')) {
             $query->byDepartment($request->department);
@@ -70,6 +89,7 @@ class EmployeeController extends Controller
     {
         $farmOwner = $this->getFarmOwner();
         $verificationUrl = null;
+        $verificationEmailSent = false;
 
         $validated = $request->validate([
             'first_name' => 'required|string|max:100',
@@ -99,7 +119,7 @@ class EmployeeController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        DB::transaction(function () use ($validated, $farmOwner, &$verificationUrl) {
+        DB::transaction(function () use ($validated, $farmOwner, &$verificationUrl, &$verificationEmailSent) {
             $employeeUser = User::create([
                 'name' => trim($validated['first_name'] . ' ' . $validated['last_name']),
                 'email' => $validated['email'],
@@ -109,7 +129,16 @@ class EmployeeController extends Controller
                 'email_verified_at' => null,
             ]);
 
-            $employeeUser->sendEmailVerificationNotification();
+            try {
+                $employeeUser->sendEmailVerificationNotification();
+                $verificationEmailSent = true;
+            } catch (\Throwable $e) {
+                Log::warning('Employee verification email failed to send', [
+                    'employee_user_id' => $employeeUser->id,
+                    'email' => $employeeUser->email,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             if (config('mail.default') === 'log') {
                 $verificationUrl = URL::temporarySignedRoute(
@@ -126,6 +155,11 @@ class EmployeeController extends Controller
                 ->except(['password', 'password_confirmation'])
                 ->toArray();
 
+            // Guard against environments where the performance_rating migration has not run yet.
+            if (!Schema::hasColumn('employees', 'performance_rating')) {
+                unset($employeeData['performance_rating']);
+            }
+
             $employeeData['farm_owner_id'] = $farmOwner->id;
             $employeeData['user_id'] = $employeeUser->id;
             $employeeData['employee_id'] = $this->generateEmployeeId($farmOwner->id);
@@ -135,7 +169,9 @@ class EmployeeController extends Controller
 
         Cache::forget($this->statsCacheKey($farmOwner->id));
 
-        $message = 'Employee added successfully. Verification email sent to their account email.';
+        $message = $verificationEmailSent
+            ? 'Employee added successfully. Verification email sent to their account email.'
+            : 'Employee added successfully, but verification email could not be sent right now. Please check mail settings and resend later.';
 
         if ($verificationUrl) {
             $message .= ' DEV verification link: ' . $verificationUrl;

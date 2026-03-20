@@ -23,6 +23,24 @@ return new class extends Migration
             return;
         }
 
+        if ($driver === 'pgsql') {
+            $this->applyPostgresStatusConstraint(
+                table: 'orders',
+                column: 'status',
+                values: ['pending', 'confirmed', 'processing', 'ready_for_pickup', 'shipped', 'delivered', 'completed', 'cancelled', 'refunded'],
+                default: 'pending',
+            );
+
+            $this->applyPostgresStatusConstraint(
+                table: 'deliveries',
+                column: 'status',
+                values: ['preparing', 'packed', 'assigned', 'out_for_delivery', 'delivered', 'completed', 'failed', 'returned', 'cancelled'],
+                default: 'preparing',
+            );
+
+            return;
+        }
+
         DB::statement("ALTER TABLE orders MODIFY status ENUM('pending','confirmed','processing','ready_for_pickup','shipped','delivered','completed','cancelled','refunded') NOT NULL DEFAULT 'pending'");
         DB::statement("ALTER TABLE deliveries MODIFY status ENUM('preparing','packed','assigned','out_for_delivery','delivered','completed','failed','returned','cancelled') NOT NULL DEFAULT 'preparing'");
     }
@@ -43,8 +61,36 @@ return new class extends Migration
             return;
         }
 
+        if ($driver === 'pgsql') {
+            $this->applyPostgresStatusConstraint(
+                table: 'deliveries',
+                column: 'status',
+                values: ['pending', 'assigned', 'dispatched', 'in_transit', 'delivered', 'failed', 'returned', 'cancelled'],
+                default: 'pending',
+            );
+
+            $this->applyPostgresStatusConstraint(
+                table: 'orders',
+                column: 'status',
+                values: ['pending', 'confirmed', 'processing', 'ready_for_pickup', 'shipped', 'delivered', 'cancelled', 'refunded'],
+                default: 'pending',
+            );
+
+            return;
+        }
+
         DB::statement("ALTER TABLE deliveries MODIFY status ENUM('pending','assigned','dispatched','in_transit','delivered','failed','returned','cancelled') NOT NULL DEFAULT 'pending'");
         DB::statement("ALTER TABLE orders MODIFY status ENUM('pending','confirmed','processing','ready_for_pickup','shipped','delivered','cancelled','refunded') NOT NULL DEFAULT 'pending'");
+    }
+
+    private function applyPostgresStatusConstraint(string $table, string $column, array $values, string $default): void
+    {
+        $constraint = "{$table}_{$column}_check";
+        $allowedValues = implode(', ', array_map(fn (string $value) => "'{$value}'", $values));
+
+        DB::statement("ALTER TABLE {$table} DROP CONSTRAINT IF EXISTS {$constraint}");
+        DB::statement("ALTER TABLE {$table} ADD CONSTRAINT {$constraint} CHECK ({$column} IN ({$allowedValues}))");
+        DB::statement("ALTER TABLE {$table} ALTER COLUMN {$column} SET DEFAULT '{$default}'");
     }
 
     private function rebuildOrdersForSqlite(array $statuses): void
