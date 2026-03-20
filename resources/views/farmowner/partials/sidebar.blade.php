@@ -114,6 +114,22 @@
            class="block px-4 py-2.5 rounded-lg {{ request()->routeIs('farmowner.support.*') ? 'bg-orange-600 text-white' : 'text-gray-300 hover:bg-gray-700' }}">
             <span class="mr-2">💬</span> Customer Support
         </a>
+        <a href="{{ route('farmowner.notifications.index') }}"
+           class="block px-4 py-2.5 rounded-lg {{ request()->routeIs('farmowner.notifications.*') ? 'bg-orange-600 text-white' : 'text-gray-300 hover:bg-gray-700' }}">
+            <span class="mr-2">🔔</span> Complaint Inbox
+        </a>
+
+        <div class="pt-4">
+            <p class="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Internal Communication</p>
+        </div>
+        <a href="{{ route('farmowner.contact.hr') }}"
+           class="block px-4 py-2.5 rounded-lg {{ request()->routeIs('farmowner.contact.hr') ? 'bg-orange-600 text-white' : 'text-gray-300 hover:bg-gray-700' }}">
+            <span class="mr-2">🧑‍💼</span> Contact HR
+        </a>
+        <a href="{{ route('farmowner.contact.finance') }}"
+           class="block px-4 py-2.5 rounded-lg {{ request()->routeIs('farmowner.contact.finance') ? 'bg-orange-600 text-white' : 'text-gray-300 hover:bg-gray-700' }}">
+            <span class="mr-2">💳</span> Contact Finance
+        </a>
 
         <!-- Settings -->
         <div class="pt-4">

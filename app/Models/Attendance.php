@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Carbon\Carbon;
 
 class Attendance extends Model
 {
@@ -103,21 +104,71 @@ class Attendance extends Model
     {
         if (!$this->time_in || !$this->time_out) return;
 
-        $timeIn = \Carbon\Carbon::parse($this->time_in);
-        $timeOut = \Carbon\Carbon::parse($this->time_out);
+        $workDate = $this->work_date instanceof Carbon
+            ? $this->work_date->copy()->startOfDay()
+            : Carbon::parse((string) $this->work_date)->startOfDay();
+
+        $timeIn = Carbon::parse($workDate->format('Y-m-d') . ' ' . Carbon::parse($this->time_in)->format('H:i:s'));
+        $timeOut = Carbon::parse($workDate->format('Y-m-d') . ' ' . Carbon::parse($this->time_out)->format('H:i:s'));
+
+        if ($timeOut->lt($timeIn)) {
+            // Handle accidental overnight capture by rolling time_out to next day.
+            $timeOut->addDay();
+        }
+
         $breakMinutes = 0;
 
         if ($this->break_start && $this->break_end) {
-            $breakStart = \Carbon\Carbon::parse($this->break_start);
-            $breakEnd = \Carbon\Carbon::parse($this->break_end);
+            $breakStart = Carbon::parse($workDate->format('Y-m-d') . ' ' . Carbon::parse($this->break_start)->format('H:i:s'));
+            $breakEnd = Carbon::parse($workDate->format('Y-m-d') . ' ' . Carbon::parse($this->break_end)->format('H:i:s'));
+
+            // If the break starts after midnight for overnight shifts, align it to next day.
+            if ($breakStart->lt($timeIn) && $timeOut->gt($timeIn->copy()->addHours(4))) {
+                $breakStart->addDay();
+                $breakEnd->addDay();
+            }
+
+            // Support break windows that cross midnight (e.g., 11:50 PM to 12:10 AM).
+            if ($breakEnd->lt($breakStart)) {
+                $breakEnd->addDay();
+            }
+
             $breakMinutes = $breakStart->diffInMinutes($breakEnd);
+        } else {
+            // Auto-deduct a 1-hour lunch break for shifts that span 12:00 PM to 1:00 PM.
+            $lunchStart = Carbon::parse($workDate->format('Y-m-d') . ' 12:00:00');
+            $lunchEnd = Carbon::parse($workDate->format('Y-m-d') . ' 13:00:00');
+
+            if ($timeIn->lt($lunchEnd) && $timeOut->gt($lunchStart)) {
+                $breakMinutes = 60;
+            }
         }
 
+        $scheduledStart = Carbon::parse($workDate->format('Y-m-d') . ' 07:00:00');
+        $scheduledEnd = Carbon::parse($workDate->format('Y-m-d') . ' 16:00:00');
+        $overtimeStart = Carbon::parse($workDate->format('Y-m-d') . ' 16:30:00');
+
         $totalMinutes = $timeIn->diffInMinutes($timeOut) - $breakMinutes;
-        $this->hours_worked = round($totalMinutes / 60, 2);
-        
-        // Calculate overtime (anything over 8 hours)
-        $this->overtime_hours = max(0, $this->hours_worked - 8);
+
+        $this->hours_worked = round(max(0, $totalMinutes) / 60, 2);
+        $this->late_minutes = max(0, $scheduledStart->diffInMinutes($timeIn, false));
+
+        $this->undertime_minutes = $timeOut->lt($scheduledEnd)
+            ? $timeOut->diffInMinutes($scheduledEnd)
+            : 0;
+
+        // Overtime rule: starts only after 4:30 PM and only if total activity exceeds 8 hours.
+        if ($timeOut->gt($overtimeStart) && $this->hours_worked > 8) {
+            $overtimeMinutes = $overtimeStart->diffInMinutes($timeOut);
+            $this->overtime_hours = round(max(0, $overtimeMinutes) / 60, 2);
+        } else {
+            $this->overtime_hours = 0;
+        }
+
+        if ($this->status === 'present' && $this->late_minutes > 0) {
+            $this->status = 'late';
+        }
+
         $this->save();
     }
 }

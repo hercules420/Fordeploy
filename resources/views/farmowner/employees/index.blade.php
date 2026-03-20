@@ -1,4 +1,4 @@
-@extends('farmowner.layouts.app')
+@extends(auth()->user()?->isHR() ? 'hr.layouts.app' : 'farmowner.layouts.app')
 
 @section('title', 'Employees')
 @section('header', 'Employee Management')
@@ -58,6 +58,7 @@
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Position</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Hire Date</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Rate</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Rating</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Status</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Actions</th>
                 </tr>
@@ -71,6 +72,7 @@
                     <td class="px-6 py-4 text-gray-300">{{ $emp->position }}</td>
                     <td class="px-6 py-4 text-gray-300">{{ $emp->hire_date->format('M d, Y') }}</td>
                     <td class="px-6 py-4 text-gray-300">₱{{ number_format($emp->daily_rate ?? ($emp->monthly_salary / 26), 2) }}/day</td>
+                    <td class="px-6 py-4 text-gray-300">{{ $emp->performance_rating ?? 3 }}/5</td>
                     <td class="px-6 py-4">
                         <span class="px-2 py-1 text-xs rounded-full 
                             @if($emp->status === 'active') bg-green-900 text-green-300
@@ -83,17 +85,19 @@
                         <div class="flex gap-2">
                             <a href="{{ route('employees.show', $emp) }}" class="text-blue-400 hover:text-blue-300">View</a>
                             <a href="{{ route('employees.edit', $emp) }}" class="text-green-400 hover:text-green-300">Edit</a>
+                            @if(Auth::user()?->isFarmOwner() || Auth::user()?->isHR())
                             <form method="POST" action="{{ route('employees.destroy', $emp) }}" onsubmit="return confirm('Delete this employee account? This will also delete their login access.');" class="inline">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="text-red-400 hover:text-red-300">Delete</button>
                             </form>
+                            @endif
                         </div>
                     </td>
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="8" class="px-6 py-8 text-center text-gray-400">No employees found.</td>
+                    <td colspan="9" class="px-6 py-8 text-center text-gray-400">No employees found.</td>
                 </tr>
                 @endforelse
             </tbody>

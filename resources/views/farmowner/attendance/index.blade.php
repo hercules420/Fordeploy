@@ -1,4 +1,4 @@
-@extends('farmowner.layouts.app')
+@extends(auth()->user()?->isHR() ? 'hr.layouts.app' : 'farmowner.layouts.app')
 
 @section('title', 'Attendance')
 @section('header', 'Daily Attendance')

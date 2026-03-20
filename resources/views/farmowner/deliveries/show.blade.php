@@ -1,12 +1,17 @@
 @extends('farmowner.layouts.app')
 
-@section('title', $delivery->delivery_number)
-@section('header', 'Delivery ' . $delivery->delivery_number)
-@section('subheader', $delivery->scheduled_date->format('M d, Y'))
+@section('title', $delivery->tracking_number)
+@section('header', 'Delivery ' . $delivery->tracking_number)
+@section('subheader', optional($delivery->scheduled_date)->format('M d, Y') ?? 'Unscheduled')
 
 @section('header-actions')
 <div class="flex gap-2">
-    @if($delivery->status === 'pending')
+    @if($delivery->status === 'preparing')
+    <form action="{{ route('deliveries.markPacked', $delivery) }}" method="POST">
+        @csrf
+        <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Mark Packed</button>
+    </form>
+    @elseif($delivery->status === 'packed' && !$delivery->driver_id)
     <form action="{{ route('deliveries.assign', $delivery) }}" method="POST" class="flex gap-2">
         @csrf
         <select name="driver_id" required class="px-3 py-2 border border-gray-600 rounded-lg">
@@ -17,13 +22,13 @@
         </select>
         <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Assign</button>
     </form>
-    @elseif($delivery->status === 'assigned')
+    @elseif($delivery->status === 'assigned' || ($delivery->status === 'packed' && $delivery->driver_id))
     <form action="{{ route('deliveries.dispatch', $delivery) }}" method="POST">
         @csrf
-        <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">🚚 Dispatch</button>
+        <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Out for Delivery</button>
     </form>
-    @elseif($delivery->status === 'dispatched')
-    <form action="{{ route('deliveries.complete', $delivery) }}" method="POST" class="flex gap-2">
+    @elseif($delivery->status === 'out_for_delivery')
+    <form action="{{ route('deliveries.markDelivered', $delivery) }}" method="POST" class="flex gap-2">
         @csrf
         @if($delivery->cod_amount > 0)
         <input type="number" name="cod_collected" value="{{ $delivery->cod_amount }}" step="0.01" 
@@ -36,6 +41,11 @@
         <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700" 
             onclick="return confirm('Mark as failed?')">✗ Failed</button>
     </form>
+    @elseif($delivery->status === 'delivered')
+    <form action="{{ route('deliveries.markCompleted', $delivery) }}" method="POST">
+        @csrf
+        <button type="submit" class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Mark Completed</button>
+    </form>
     @endif
 </div>
 @endsection
@@ -47,7 +57,7 @@
         <div class="bg-gray-800 border border-gray-700 rounded-lg p-6">
             <div class="flex justify-between items-center">
                 @php
-                    $steps = ['pending', 'assigned', 'dispatched', 'delivered'];
+                    $steps = ['preparing', 'packed', 'assigned', 'out_for_delivery', 'delivered', 'completed'];
                     $currentIndex = array_search($delivery->status, $steps);
                     if ($delivery->status === 'failed') $currentIndex = -1;
                 @endphp
@@ -58,7 +68,7 @@
                         @if($index < $currentIndex) ✓ @else {{ $index + 1 }} @endif
                     </div>
                     <p class="text-xs mt-1 {{ $index <= $currentIndex ? 'text-green-600 font-medium' : 'text-gray-500' }}">
-                        {{ ucfirst($step) }}
+                        {{ ucwords(str_replace('_', ' ', $step)) }}
                     </p>
                 </div>
                 @if($index < count($steps) - 1)
@@ -80,11 +90,11 @@
         <div class="space-y-3">
             <div>
                 <p class="text-xs text-gray-400">Name</p>
-                <p class="font-medium text-white">{{ $delivery->customer_name }}</p>
+                <p class="font-medium text-white">{{ $delivery->recipient_name }}</p>
             </div>
             <div>
                 <p class="text-xs text-gray-400">Phone</p>
-                <p class="font-medium text-white">{{ $delivery->customer_phone }}</p>
+                <p class="font-medium text-white">{{ $delivery->recipient_phone }}</p>
             </div>
             <div>
                 <p class="text-xs text-gray-400">Address</p>
@@ -109,7 +119,7 @@
             <div>
                 <p class="text-xs text-gray-400">Vehicle</p>
                 <span class="px-2 py-1 text-xs bg-blue-900 text-blue-300 rounded-full">
-                    {{ ucfirst($delivery->driver->vehicle_type) }} - {{ $delivery->driver->plate_number }}
+                    {{ ucfirst($delivery->driver->vehicle_type) }} - {{ $delivery->driver->vehicle_plate }}
                 </span>
             </div>
         </div>
@@ -156,11 +166,11 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
                 <h3 class="font-semibold text-lg mb-2">Items</h3>
-                <p class="text-gray-300">{{ $delivery->items_description ?? 'No description' }}</p>
+                <p class="text-gray-300">{{ $delivery->delivery_notes ?? 'No description' }}</p>
             </div>
             <div>
                 <h3 class="font-semibold text-lg mb-2">Notes</h3>
-                <p class="text-gray-300">{{ $delivery->notes ?? 'No notes' }}</p>
+                <p class="text-gray-300">{{ $delivery->special_instructions ?? 'No notes' }}</p>
             </div>
         </div>
     </div>

@@ -6,16 +6,14 @@ use App\Models\SupplyItem;
 use App\Models\StockTransaction;
 use App\Models\Supplier;
 use App\Models\FarmOwner;
+use App\Models\Expense;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 
 class SupplyController extends Controller
 {
-    private function getFarmOwner()
-    {
-        return FarmOwner::where('user_id', Auth::id())->firstOrFail();
-    }
+    use \App\Http\Controllers\Concerns\ResolvesFarmOwner;
 
     public function index(Request $request)
     {
@@ -89,7 +87,7 @@ class SupplyController extends Controller
 
         // Record initial stock transaction
         if ($validated['quantity_on_hand'] > 0) {
-            StockTransaction::create([
+            $transaction = StockTransaction::create([
                 'farm_owner_id' => $farmOwner->id,
                 'supply_item_id' => $item->id,
                 'supplier_id' => $validated['supplier_id'],
@@ -103,6 +101,8 @@ class SupplyController extends Controller
                 'transaction_date' => today(),
                 'reason' => 'Initial stock entry',
             ]);
+
+            $this->createExpenseFromStockInTransaction($farmOwner->id, $transaction, $item, Auth::id());
         }
 
         return redirect()->route('supplies.index')->with('success', 'Supply item added.');
@@ -183,7 +183,26 @@ class SupplyController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $supply->adjustStock($validated['quantity'], 'stock_in', Auth::id(), $validated['notes'] ?? null);
+        $transaction = $supply->adjustStock($validated['quantity'], 'stock_in', Auth::id(), $validated['notes'] ?? null);
+
+        $effectiveUnitCost = array_key_exists('unit_cost', $validated) && $validated['unit_cost'] !== null
+            ? (float) $validated['unit_cost']
+            : (float) $supply->unit_cost;
+        $totalCost = (float) $validated['quantity'] * $effectiveUnitCost;
+
+        $transaction->update([
+            'supplier_id' => $validated['supplier_id'] ?? $supply->supplier_id,
+            'unit_cost' => $effectiveUnitCost,
+            'total_cost' => $totalCost,
+            'invoice_number' => $validated['invoice_number'] ?? null,
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        if (array_key_exists('unit_cost', $validated) && $validated['unit_cost'] !== null) {
+            $supply->update(['unit_cost' => $effectiveUnitCost]);
+        }
+
+        $this->createExpenseFromStockInTransaction($farmOwner->id, $transaction, $supply, Auth::id());
         
         Cache::forget("farm_{$farmOwner->id}_supply_stats");
 
@@ -226,5 +245,50 @@ class SupplyController extends Controller
             ->get();
 
         return view('farmowner.supplies.alerts', compact('lowStock', 'expiring'));
+    }
+
+    private function createExpenseFromStockInTransaction(int $farmOwnerId, StockTransaction $transaction, SupplyItem $item, int $recordedBy): void
+    {
+        if ($transaction->transaction_type !== 'stock_in' || (float) $transaction->total_cost <= 0) {
+            return;
+        }
+
+        Expense::updateOrCreate(
+            [
+                'source_type' => 'stock_transaction',
+                'source_id' => $transaction->id,
+            ],
+            [
+                'farm_owner_id' => $farmOwnerId,
+                'recorded_by' => $recordedBy,
+                'supplier_id' => $transaction->supplier_id,
+                'category' => $this->mapSupplyCategoryToExpenseCategory((string) $item->category),
+                'description' => 'Supply stock-in: ' . $item->name,
+                'amount' => $transaction->total_cost,
+                'tax_amount' => 0,
+                'total_amount' => $transaction->total_cost,
+                'expense_date' => $transaction->transaction_date ?? today(),
+                'payment_status' => 'pending',
+                'payment_method' => null,
+                'reference_number' => $transaction->invoice_number ?: $transaction->reference_number,
+                'status' => 'approved',
+                'is_auto_generated' => true,
+                'notes' => 'Auto-generated from stock-in transaction.',
+            ]
+        );
+
+        Cache::forget("farm_{$farmOwnerId}_expense_stats");
+    }
+
+    private function mapSupplyCategoryToExpenseCategory(string $supplyCategory): string
+    {
+        return match ($supplyCategory) {
+            'feeds' => 'feeds',
+            'vaccines' => 'vaccines',
+            'medications', 'vitamins', 'supplements' => 'medications',
+            'equipment' => 'equipment',
+            'cleaning' => 'maintenance',
+            default => 'miscellaneous',
+        };
     }
 }

@@ -57,8 +57,8 @@
                     <p class="text-2xl font-bold text-gray-300">₱{{ number_format($product->cost_price ?? 0, 2) }}</p>
                     <p class="text-xs text-gray-300">Cost Price</p>
                 </div>
-                <div class="text-center p-4 {{ $product->quantity_available < 10 ? 'bg-red-900/50' : 'bg-blue-900/50' }} rounded-lg">
-                    <p class="text-2xl font-bold {{ $product->quantity_available < 10 ? 'text-red-400' : 'text-blue-400' }}">
+                <div class="text-center p-4 {{ $product->quantity_available <= 20 ? 'bg-red-900/50' : 'bg-blue-900/50' }} rounded-lg">
+                    <p class="text-2xl font-bold {{ $product->quantity_available <= 20 ? 'text-red-400' : 'text-blue-400' }}">
                         {{ $product->quantity_available }}
                     </p>
                     <p class="text-xs text-gray-300">In Stock</p>

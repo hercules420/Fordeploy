@@ -15,14 +15,16 @@ use Illuminate\Support\Facades\URL;
 
 class EmployeeController extends Controller
 {
+    use \App\Http\Controllers\Concerns\ResolvesFarmOwner;
+
+    private function isFarmOwnerUser(): bool
+    {
+        return (bool) Auth::user()?->isFarmOwner();
+    }
+
     private function statsCacheKey(int $farmOwnerId): string
     {
         return "farm_{$farmOwnerId}_employee_stats";
-    }
-
-    private function getFarmOwner()
-    {
-        return FarmOwner::where('user_id', Auth::id())->firstOrFail();
     }
 
     public function index(Request $request)
@@ -30,7 +32,7 @@ class EmployeeController extends Controller
         $farmOwner = $this->getFarmOwner();
         
         $query = Employee::byFarmOwner($farmOwner->id)
-            ->select('id', 'employee_id', 'first_name', 'last_name', 'department', 'position', 'hire_date', 'daily_rate', 'status');
+            ->select('id', 'employee_id', 'first_name', 'last_name', 'department', 'position', 'hire_date', 'daily_rate', 'performance_rating', 'status');
 
         if ($request->filled('department')) {
             $query->byDepartment($request->department);
@@ -87,6 +89,7 @@ class EmployeeController extends Controller
             'hire_date' => 'required|date',
             'daily_rate' => 'nullable|numeric|min:0',
             'monthly_salary' => 'nullable|numeric|min:0',
+            'performance_rating' => 'nullable|integer|min:1|max:5',
             'sss_number' => 'nullable|string|max:20',
             'philhealth_number' => 'nullable|string|max:20',
             'pagibig_number' => 'nullable|string|max:20',
@@ -176,7 +179,7 @@ class EmployeeController extends Controller
         $farmOwner = $this->getFarmOwner();
         abort_if($employee->farm_owner_id !== $farmOwner->id, 403);
 
-        $validated = $request->validate([
+        $rules = [
             'first_name' => 'required|string|max:100',
             'last_name' => 'required|string|max:100',
             'middle_name' => 'nullable|string|max:100',
@@ -185,15 +188,23 @@ class EmployeeController extends Controller
             'address' => 'nullable|string',
             'emergency_contact_name' => 'nullable|string|max:255',
             'emergency_contact_phone' => 'nullable|string|max:20',
-            'department' => 'required|in:farm_operations,hr,finance,logistics,sales,admin',
             'position' => 'required|string|max:100',
-            'daily_rate' => 'nullable|numeric|min:0',
-            'monthly_salary' => 'nullable|numeric|min:0',
+            'employment_type' => 'nullable|in:full_time,part_time,contract,seasonal',
+            'hire_date' => 'nullable|date',
             'bank_name' => 'nullable|string|max:100',
             'bank_account_number' => 'nullable|string|max:50',
-            'status' => 'required|in:active,on_leave,suspended,terminated,resigned',
             'notes' => 'nullable|string',
-        ]);
+        ];
+
+        if ($this->isFarmOwnerUser()) {
+            $rules['department'] = 'required|in:farm_operations,hr,finance,logistics,sales,admin';
+            $rules['daily_rate'] = 'nullable|numeric|min:0';
+            $rules['monthly_salary'] = 'nullable|numeric|min:0';
+            $rules['performance_rating'] = 'nullable|integer|min:1|max:5';
+            $rules['status'] = 'required|in:active,on_leave,suspended,terminated,resigned';
+        }
+
+        $validated = $request->validate($rules);
 
         $employee->update($validated);
         Cache::forget($this->statsCacheKey($farmOwner->id));
@@ -205,6 +216,11 @@ class EmployeeController extends Controller
     {
         $farmOwner = $this->getFarmOwner();
         abort_if($employee->farm_owner_id !== $farmOwner->id, 403);
+        abort_unless(
+            $this->isFarmOwnerUser() || Auth::user()?->isHR(),
+            403,
+            'Only farm owner or HR can delete employees.'
+        );
 
         DB::transaction(function () use ($employee) {
             $linkedUser = $employee->user;

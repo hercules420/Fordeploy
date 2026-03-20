@@ -73,17 +73,17 @@ class Delivery extends Model
 
     public function scopePending(Builder $query)
     {
-        return $query->whereIn('status', ['pending', 'assigned']);
+        return $query->whereIn('status', ['preparing', 'packed', 'assigned']);
     }
 
     public function scopeInTransit(Builder $query)
     {
-        return $query->whereIn('status', ['dispatched', 'in_transit']);
+        return $query->where('status', 'out_for_delivery');
     }
 
     public function scopeDelivered(Builder $query)
     {
-        return $query->where('status', 'delivered');
+        return $query->whereIn('status', ['delivered', 'completed']);
     }
 
     public function scopeFailed(Builder $query)
@@ -98,7 +98,7 @@ class Delivery extends Model
 
     public function scopeUnassigned(Builder $query)
     {
-        return $query->whereNull('driver_id')->where('status', 'pending');
+        return $query->whereNull('driver_id')->where('status', 'packed');
     }
 
     // Methods
@@ -111,10 +111,15 @@ class Delivery extends Model
         ]);
     }
 
+    public function markPacked(): void
+    {
+        $this->update(['status' => 'packed']);
+    }
+
     public function dispatch(): void
     {
         $this->update([
-            'status' => 'dispatched',
+            'status' => 'out_for_delivery',
             'dispatched_at' => now()
         ]);
 
@@ -125,7 +130,7 @@ class Delivery extends Model
 
     public function markInTransit(): void
     {
-        $this->update(['status' => 'in_transit']);
+        $this->update(['status' => 'out_for_delivery']);
     }
 
     public function markDelivered(?string $proofUrl = null): void
@@ -154,6 +159,11 @@ class Delivery extends Model
         }
     }
 
+    public function markCompleted(): void
+    {
+        $this->update(['status' => 'completed']);
+    }
+
     public function rateDelivery(float $rating, ?string $feedback = null): void
     {
         $this->update([
@@ -174,6 +184,10 @@ class Delivery extends Model
         static::creating(function ($delivery) {
             if (!$delivery->tracking_number) {
                 $delivery->tracking_number = 'TRK-' . strtoupper(uniqid());
+            }
+
+            if (empty($delivery->status)) {
+                $delivery->status = 'preparing';
             }
         });
     }

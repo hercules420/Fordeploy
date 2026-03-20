@@ -28,6 +28,30 @@ class PayMongoService
             return null;
         }
 
+        $amount = (int) ($params['amount'] ?? 0);
+        $lineItems = $params['line_items'] ?? [
+            [
+                'currency' => 'PHP',
+                'amount' => $amount,
+                'name' => $params['plan_name'] ?? 'Payment',
+                'quantity' => 1,
+                'description' => $params['description'] ?? 'Payment',
+            ],
+        ];
+
+        $paymentMethodTypes = $params['payment_method_types'] ?? [
+            'gcash',
+            'grab_pay',
+            'paymaya',
+            'card',
+        ];
+
+        $metadata = $params['metadata'] ?? [
+            'user_id' => $params['user_id'] ?? null,
+            'farm_owner_id' => $params['farm_owner_id'] ?? null,
+            'plan' => $params['plan'] ?? null,
+        ];
+
         $response = Http::withHeaders([
             'Content-Type' => 'application/json',
             'Authorization' => 'Basic ' . base64_encode($this->secretKey . ':'),
@@ -36,32 +60,18 @@ class PayMongoService
         ])->post("{$this->baseUrl}/checkout_sessions", [
             'data' => [
                 'attributes' => [
-                    'send_email_receipt' => true,
-                    'show_description' => true,
-                    'show_line_items' => true,
+                    'send_email_receipt' => $params['send_email_receipt'] ?? true,
+                    'show_description' => $params['show_description'] ?? true,
+                    'show_line_items' => $params['show_line_items'] ?? true,
                     'cancel_url' => $params['cancel_url'],
                     'success_url' => $params['success_url'],
                     'description' => $params['description'],
-                    'line_items' => [
-                        [
-                            'currency' => 'PHP',
-                            'amount' => $params['amount'], // in centavos
-                            'name' => $params['plan_name'],
-                            'quantity' => 1,
-                            'description' => $params['description'],
-                        ],
-                    ],
-                    'payment_method_types' => [
-                        'gcash',
-                        'grab_pay',
-                        'paymaya',
-                        'card',
-                    ],
-                    'metadata' => [
-                        'user_id' => $params['user_id'],
-                        'farm_owner_id' => $params['farm_owner_id'],
-                        'plan' => $params['plan'],
-                    ],
+                    'line_items' => $lineItems,
+                    'payment_method_types' => $paymentMethodTypes,
+                    'metadata' => array_filter(
+                        $metadata,
+                        static fn ($value) => $value !== null && $value !== ''
+                    ),
                 ],
             ],
         ]);
@@ -147,6 +157,29 @@ class PayMongoService
         ])->get("{$this->baseUrl}/payments/{$paymentId}");
 
         if (!$response->successful()) {
+            return null;
+        }
+
+        return $response->json()['data'];
+    }
+
+    /**
+     * Retrieve a payment link by ID.
+     */
+    public function retrievePaymentLink(string $linkId): ?array
+    {
+        $response = Http::withHeaders([
+            'Authorization' => 'Basic ' . base64_encode($this->secretKey . ':'),
+        ])->withOptions([
+            'verify' => $this->verifySsl,
+        ])->get("{$this->baseUrl}/links/{$linkId}");
+
+        if (!$response->successful()) {
+            Log::error('PayMongo Retrieve Link Error', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+                'link_id' => $linkId,
+            ]);
             return null;
         }
 

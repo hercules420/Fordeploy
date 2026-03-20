@@ -27,39 +27,23 @@
     </form>
 </div>
 
-<!-- Flock Summary -->
+<!-- Production Summary -->
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
     <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 text-center border-l-4 border-blue-600">
-        <p class="text-3xl font-bold text-blue-600">{{ number_format($flockStats['total_birds'] ?? 0) }}</p>
+        <p class="text-3xl font-bold text-blue-600">{{ number_format($flocks->sum('current_count')) }}</p>
         <p class="text-gray-300 text-sm">Total Birds</p>
     </div>
-    <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 text-center border-l-4 border-green-600">
-        <p class="text-3xl font-bold text-green-600">{{ number_format($flockStats['total_layers'] ?? 0) }}</p>
-        <p class="text-gray-300 text-sm">Layers</p>
-    </div>
-    <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 text-center border-l-4 border-yellow-600">
-        <p class="text-3xl font-bold text-yellow-600">{{ number_format($flockStats['total_broilers'] ?? 0) }}</p>
-        <p class="text-gray-300 text-sm">Broilers</p>
+    <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 text-center border-l-4 border-orange-500">
+        <p class="text-3xl font-bold text-orange-600">{{ number_format((float) ($eggProduction->collected ?? 0)) }}</p>
+        <p class="text-gray-300 text-sm">Eggs Collected</p>
     </div>
     <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 text-center border-l-4 border-red-600">
-        <p class="text-3xl font-bold text-red-600">{{ number_format($flockStats['mortality'] ?? 0, 2) }}%</p>
-        <p class="text-gray-300 text-sm">Mortality Rate</p>
+        <p class="text-3xl font-bold text-red-600">{{ number_format((float) ($mortalityStats->total_mortality ?? 0)) }}</p>
+        <p class="text-gray-300 text-sm">Mortality (Period)</p>
     </div>
-</div>
-
-<!-- Egg Production Summary -->
-<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-    <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 border-l-4 border-orange-500">
-        <p class="text-gray-300 text-sm">Total Eggs Produced</p>
-        <p class="text-3xl font-bold text-orange-600">{{ number_format($eggStats['total_eggs'] ?? 0) }}</p>
-    </div>
-    <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 border-l-4 border-purple-500">
-        <p class="text-gray-300 text-sm">Avg Eggs/Day</p>
-        <p class="text-3xl font-bold text-purple-600">{{ number_format($eggStats['avg_daily'] ?? 0, 0) }}</p>
-    </div>
-    <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 border-l-4 border-teal-500">
-        <p class="text-gray-300 text-sm">Production Rate</p>
-        <p class="text-3xl font-bold text-teal-600">{{ number_format($eggStats['production_rate'] ?? 0, 1) }}%</p>
+    <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 text-center border-l-4 border-green-600">
+        <p class="text-3xl font-bold text-green-600">{{ number_format((float) ($feedConsumption->total_feed ?? 0), 1) }}</p>
+        <p class="text-gray-300 text-sm">Feed Used (kg)</p>
     </div>
 </div>
 
@@ -85,7 +69,7 @@
                 @forelse($flocks as $flock)
                 <tr>
                     <td class="px-6 py-4 font-medium text-white">
-                        <a href="{{ route('flocks.show', $flock) }}" class="text-blue-600 hover:underline">{{ $flock->name }}</a>
+                        <a href="{{ route('flocks.show', $flock) }}" class="text-blue-600 hover:underline">{{ $flock->batch_name }}</a>
                     </td>
                     <td class="px-6 py-4">
                         <span class="px-2 py-1 text-xs rounded-full 
@@ -94,12 +78,12 @@
                         </span>
                     </td>
                     <td class="px-6 py-4">{{ number_format($flock->current_count) }}</td>
-                    <td class="px-6 py-4 text-gray-300">{{ $flock->age_in_days }}</td>
+                    <td class="px-6 py-4 text-gray-300">-</td>
                     <td class="px-6 py-4 {{ $flock->mortality_rate > 3 ? 'text-red-600 font-semibold' : 'text-gray-600' }}">
                         {{ number_format($flock->mortality_rate, 2) }}%
                     </td>
-                    <td class="px-6 py-4 text-gray-300">{{ number_format($flock->eggs_in_period ?? 0) }}</td>
-                    <td class="px-6 py-4 text-gray-300">{{ number_format($flock->feed_in_period ?? 0, 1) }}</td>
+                    <td class="px-6 py-4 text-gray-300">-</td>
+                    <td class="px-6 py-4 text-gray-300">-</td>
                 </tr>
                 @empty
                 <tr>
@@ -118,9 +102,9 @@
     </div>
     <div class="p-6">
         <div class="flex items-end gap-1 h-32">
-            @foreach($dailyEggs->take(14) as $day)
+            @foreach($eggTrend->take(14) as $day)
             @php
-                $max = $dailyEggs->max('eggs') ?: 1;
+                $max = $eggTrend->max('eggs') ?: 1;
                 $height = ($day->eggs / $max) * 100;
             @endphp
             <div class="flex-1 flex flex-col items-center">

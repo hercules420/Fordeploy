@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Log;
 
 class ProductController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $user = Auth::user();
         
@@ -23,12 +23,37 @@ class ProductController extends Controller
             return view('farmowner.products.index', compact('products'));
         }
 
+        $selectedFarmOwnerId = $request->integer('farm_owner_id');
+        $searchTerm = trim((string) $request->input('q', ''));
+
         $products = Product::with('farmOwner.user')
             ->where('status', 'active')
+            ->where('quantity_available', '>', 0)
+            ->whereHas('farmOwner', function ($query) {
+                $query->where('permit_status', 'approved');
+            })
+            ->when($selectedFarmOwnerId > 0, function ($query) use ($selectedFarmOwnerId) {
+                $query->where('farm_owner_id', $selectedFarmOwnerId);
+            })
+            ->when($searchTerm !== '', function ($query) use ($searchTerm) {
+                $query->where(function ($inner) use ($searchTerm) {
+                    $inner->where('name', 'like', '%' . $searchTerm . '%')
+                        ->orWhere('description', 'like', '%' . $searchTerm . '%')
+                        ->orWhere('category', 'like', '%' . $searchTerm . '%');
+                });
+            })
             ->latest('published_at')
             ->paginate(20);
 
-        return view('products.browse', compact('products'));
+        $farmOwners = FarmOwner::query()
+            ->where('permit_status', 'approved')
+            ->whereHas('products', function ($query) {
+                $query->where('status', 'active')->where('quantity_available', '>', 0);
+            })
+            ->orderBy('farm_name')
+            ->get(['id', 'farm_name']);
+
+        return view('products.browse', compact('products', 'farmOwners', 'selectedFarmOwnerId', 'searchTerm'));
     }
 
     public function create()
@@ -88,9 +113,24 @@ class ProductController extends Controller
             'cost_price' => 'nullable|numeric|min:0',
             'unit' => 'required|string|max:50',
             'minimum_order' => 'integer|min:1',
+            'is_bulk_order_enabled' => 'required|boolean',
+            'order_quantity_step' => 'nullable|integer|min:1',
+            'order_quantity_options' => 'nullable|array',
+            'order_quantity_options.*' => 'nullable|integer|min:1',
             'discount_percentage' => 'numeric|min:0|max:100',
             'image_url' => 'nullable|url',
         ]);
+
+        $validated['is_bulk_order_enabled'] = (bool) $validated['is_bulk_order_enabled'];
+        $validated['order_quantity_step'] = $validated['is_bulk_order_enabled']
+            ? max(1, (int) ($validated['order_quantity_step'] ?? 1))
+            : 1;
+        $validated['order_quantity_options'] = $this->normalizeOrderQuantityOptions(
+            $validated['order_quantity_options'] ?? []
+        );
+        if (!empty($validated['order_quantity_options'])) {
+            $validated['minimum_order'] = 1;
+        }
 
         $product = Product::create([
             'farm_owner_id' => $farm_owner->id,
@@ -118,7 +158,8 @@ class ProductController extends Controller
         $this->authorize_farm_owner();
 
         $farm_owner = Auth::user()->farmOwner;
-        if (!$this->activeSubscriptionOrRedirect($farm_owner)) {
+        $active_sub = $this->activeSubscriptionOrRedirect($farm_owner);
+        if (!$active_sub) {
             return redirect()->route('farmowner.subscriptions')
                 ->with('error', 'You need an active subscription to manage products. Please subscribe to a plan first.');
         }
@@ -127,7 +168,9 @@ class ProductController extends Controller
             abort(403);
         }
 
-        return view('farmowner.products.edit', compact('product'));
+        $isAtProductLimit = (bool) ($active_sub->product_limit && $farm_owner->products()->count() >= $active_sub->product_limit);
+
+        return view('farmowner.products.edit', compact('product', 'isAtProductLimit'));
     }
 
     public function update(Request $request, Product $product)
@@ -135,7 +178,8 @@ class ProductController extends Controller
         $this->authorize_farm_owner();
 
         $farm_owner = Auth::user()->farmOwner;
-        if (!$this->activeSubscriptionOrRedirect($farm_owner)) {
+        $active_sub = $this->activeSubscriptionOrRedirect($farm_owner);
+        if (!$active_sub) {
             return redirect()->route('farmowner.subscriptions')
                 ->with('error', 'You need an active subscription to manage products. Please subscribe to a plan first.');
         }
@@ -145,15 +189,80 @@ class ProductController extends Controller
         }
 
         $validated = $request->validate([
-            'name' => 'string|max:255',
+            'category' => 'required|in:live_stock,breeding,fighting_cock,eggs,feeds,equipment,other',
+            'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'quantity_available' => 'integer|min:0',
-            'price' => 'numeric|min:0',
+            'status' => 'required|in:active,inactive,out_of_stock',
+            'quantity_available' => 'required|integer|min:0',
+            'price' => 'required|numeric|min:0',
             'cost_price' => 'nullable|numeric|min:0',
-            'unit' => 'string|max:50',
+            'unit' => 'required|string|max:50',
             'minimum_order' => 'integer|min:1',
+            'is_bulk_order_enabled' => 'nullable|boolean',
+            'order_quantity_step' => 'nullable|integer|min:1',
+            'order_quantity_options' => 'nullable|array',
+            'order_quantity_options.*' => 'nullable|integer|min:1',
             'discount_percentage' => 'numeric|min:0|max:100',
+            'image_url' => 'nullable|url',
         ]);
+
+        if (array_key_exists('is_bulk_order_enabled', $validated)) {
+            $validated['is_bulk_order_enabled'] = (bool) $validated['is_bulk_order_enabled'];
+
+            if ($validated['is_bulk_order_enabled']) {
+                $validated['order_quantity_step'] = max(1, (int) ($validated['order_quantity_step'] ?? $product->order_quantity_step ?? 1));
+            } else {
+                $validated['order_quantity_step'] = 1;
+            }
+        } elseif (array_key_exists('order_quantity_step', $validated)) {
+            $validated['order_quantity_step'] = max(1, (int) $validated['order_quantity_step']);
+        }
+
+        if (array_key_exists('order_quantity_options', $validated)) {
+            $validated['order_quantity_options'] = $this->normalizeOrderQuantityOptions(
+                $validated['order_quantity_options'] ?? []
+            );
+
+            if (!empty($validated['order_quantity_options'])) {
+                $validated['minimum_order'] = 1;
+            }
+        }
+
+        $isAtProductLimit = (bool) ($active_sub->product_limit && $farm_owner->products()->count() >= $active_sub->product_limit);
+        if ($isAtProductLimit) {
+            $identityChanged = false;
+
+            if (array_key_exists('name', $validated) && trim((string) $validated['name']) !== (string) $product->name) {
+                $identityChanged = true;
+            }
+
+            if (array_key_exists('description', $validated)) {
+                $incomingDescription = trim((string) ($validated['description'] ?? ''));
+                $currentDescription = trim((string) ($product->description ?? ''));
+                if ($incomingDescription !== $currentDescription) {
+                    $identityChanged = true;
+                }
+            }
+
+            if (array_key_exists('image_url', $validated) && ($validated['image_url'] ?? null) !== $product->image_url) {
+                $identityChanged = true;
+            }
+
+            if ($request->filled('sku') && trim((string) $request->input('sku')) !== (string) $product->sku) {
+                $identityChanged = true;
+            }
+
+            if ((string) ($validated['category'] ?? '') !== (string) $product->category) {
+                $identityChanged = true;
+            }
+
+            if ($identityChanged) {
+                return redirect()->back()->withInput()->with(
+                    'error',
+                    'You have reached your product limit. You can only update stock, pricing, and status for existing products. Delete a product or upgrade your subscription to add a different product.'
+                );
+            }
+        }
 
         $product->update($validated);
 
@@ -233,5 +342,16 @@ class ProductController extends Controller
     private function activeSubscriptionOrRedirect(FarmOwner $farm_owner)
     {
         return $farm_owner->subscriptions()->active()->first();
+    }
+
+    private function normalizeOrderQuantityOptions(array $rawOptions): array
+    {
+        return collect($rawOptions)
+            ->map(fn($value) => (int) $value)
+            ->filter(fn($value) => $value > 0)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
     }
 }

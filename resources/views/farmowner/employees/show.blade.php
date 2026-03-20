@@ -1,4 +1,4 @@
-@extends('farmowner.layouts.app')
+@extends(auth()->user()?->isHR() ? 'hr.layouts.app' : 'farmowner.layouts.app')
 
 @section('title', 'Employee Details')
 @section('header', 'Employee Details')
@@ -7,11 +7,13 @@
 @section('header-actions')
 <div class="flex gap-2">
     <a href="{{ route('employees.edit', $employee) }}" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Edit Employee</a>
+    @if(Auth::user()?->isFarmOwner() || Auth::user()?->isHR())
     <form method="POST" action="{{ route('employees.destroy', $employee) }}" onsubmit="return confirm('Delete this employee account? This will also delete their login access.');" class="inline">
         @csrf
         @method('DELETE')
         <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Delete Employee</button>
     </form>
+    @endif
     <a href="{{ route('employees.index') }}" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500">Back</a>
 </div>
 @endsection
@@ -31,6 +33,7 @@
             <div><p class="text-gray-400">Phone</p><p class="text-white font-semibold">{{ $employee->phone ?? 'N/A' }}</p></div>
             <div><p class="text-gray-400">Daily Rate</p><p class="text-white font-semibold">₱{{ number_format($employee->daily_rate ?? 0, 2) }}</p></div>
             <div><p class="text-gray-400">Monthly Salary</p><p class="text-white font-semibold">₱{{ number_format($employee->monthly_salary ?? 0, 2) }}</p></div>
+            <div><p class="text-gray-400">Performance Rating</p><p class="text-white font-semibold">{{ $employee->performance_rating ?? 3 }}/5</p></div>
         </div>
     </div>
 

@@ -1,15 +1,11 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create Department User</title>
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
-</head>
-<body class="bg-gray-900 text-gray-200">
-    <div class="max-w-3xl mx-auto px-6 py-8">
-        <h1 class="text-2xl font-bold text-white mb-2">Create Department User</h1>
-        <p class="text-gray-400 text-sm mb-6">Assign access by department role</p>
+@extends('hr.layouts.app')
+
+@section('title', 'Create Department User')
+@section('header', 'Create Department User')
+@section('subheader', 'Assign role-based access to a department account.')
+
+@section('content')
+    <div class="max-w-3xl">
 
         @if($errors->any())
         <div class="mb-6 p-4 bg-red-900/40 border border-red-700 rounded-lg">
@@ -70,5 +66,4 @@
             </div>
         </form>
     </div>
-</body>
-</html>
+@endsection

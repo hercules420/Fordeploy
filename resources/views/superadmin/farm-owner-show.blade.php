@@ -18,8 +18,10 @@
                 <a href="{{ route('superadmin.dashboard') }}" class="block px-4 py-3 hover:bg-gray-700 rounded-lg">Dashboard</a>
                 <a href="{{ route('superadmin.farm_owners') }}" class="block px-4 py-3 bg-orange-600 text-white rounded-lg">Farm Owners</a>
                 <a href="{{ route('superadmin.orders') }}" class="block px-4 py-3 hover:bg-gray-700 rounded-lg">Orders</a>
+                <a href="{{ route('superadmin.monitoring') }}" class="block px-4 py-3 hover:bg-gray-700 rounded-lg">Monitoring</a>
                 <a href="{{ route('superadmin.subscriptions') }}" class="block px-4 py-3 hover:bg-gray-700 rounded-lg">Subscriptions</a>
                 <a href="{{ route('superadmin.users') }}" class="block px-4 py-3 hover:bg-gray-700 rounded-lg">Users</a>
+                <a href="{{ route('superadmin.support.index') }}" class="block px-4 py-3 hover:bg-gray-700 rounded-lg">Support</a>
                 <hr class="my-4 border-gray-600">
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf
@@ -91,11 +93,11 @@
                     <!-- Valid ID -->
                     <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
                         <h3 class="text-lg font-bold mb-4">Valid ID Verification</h3>
-                        @if($farm_owner->valid_id_path)
+                        @if($farm_owner->valid_id_url)
                         <div class="border border-gray-600 rounded-lg overflow-hidden">
-                            <img src="{{ asset('storage/' . $farm_owner->valid_id_path) }}" alt="Valid ID" class="w-full max-h-80 object-contain bg-gray-700">
+                            <img src="{{ $farm_owner->valid_id_url }}" alt="Valid ID" class="w-full max-h-80 object-contain bg-gray-700">
                         </div>
-                        <a href="{{ asset('storage/' . $farm_owner->valid_id_path) }}" target="_blank" class="mt-3 inline-block text-blue-400 hover:text-blue-300 text-sm underline">Open Full Size</a>
+                        <a href="{{ $farm_owner->valid_id_url }}" target="_blank" class="mt-3 inline-block text-blue-400 hover:text-blue-300 text-sm underline">Open Full Size</a>
                         @else
                         <div class="text-center py-12 text-gray-500">
                             <p class="text-4xl mb-2">🪪</p>
@@ -128,7 +130,7 @@
                         </thead>
                         <tbody class="divide-y divide-gray-700">
                             @foreach($products as $product)
-                            <tr class="hover:bg-gray-700 transition {{ $product->quantity_available < 10 ? 'bg-red-900/10' : '' }}">
+                            <tr class="hover:bg-gray-700 transition {{ $product->quantity_available <= 20 ? 'bg-red-900/10' : '' }}">
                                 <td class="px-6 py-4 font-semibold">{{ $product->name }}</td>
                                 <td class="px-6 py-4 font-mono text-xs">{{ $product->sku }}</td>
                                 <td class="px-6 py-4">
@@ -137,7 +139,7 @@
                                     </span>
                                 </td>
                                 <td class="px-6 py-4 font-medium">₱{{ number_format($product->price, 2) }}</td>
-                                <td class="px-6 py-4 font-bold {{ $product->quantity_available < 10 ? 'text-red-400' : 'text-white' }}">
+                                <td class="px-6 py-4 font-bold {{ $product->quantity_available <= 20 ? 'text-red-400' : 'text-white' }}">
                                     {{ $product->quantity_available }}
                                 </td>
                                 <td class="px-6 py-4 text-gray-400">{{ $product->quantity_sold }}</td>
@@ -153,7 +155,7 @@
                                 <td class="px-6 py-4">
                                     @if($product->quantity_available == 0)
                                     <span class="px-3 py-1 rounded-full text-xs font-bold bg-red-600 text-white animate-pulse">OUT OF STOCK</span>
-                                    @elseif($product->quantity_available < 10)
+                                    @elseif($product->quantity_available <= 20)
                                     <span class="px-3 py-1 rounded-full text-xs font-bold bg-yellow-600 text-white">⚠ LOW ON STOCK</span>
                                     @else
                                     <span class="px-3 py-1 rounded-full text-xs font-semibold bg-green-500/20 text-green-400">In Stock</span>

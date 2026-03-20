@@ -17,7 +17,7 @@ class Employee extends Model
         'email', 'phone', 'address', 'birth_date', 'gender', 'emergency_contact_name',
         'emergency_contact_phone', 'department', 'position', 'employment_type', 'hire_date',
         'end_date', 'daily_rate', 'monthly_salary', 'sss_number', 'philhealth_number',
-        'pagibig_number', 'tin_number', 'bank_name', 'bank_account_number', 'status', 'notes'
+        'performance_rating', 'pagibig_number', 'tin_number', 'bank_name', 'bank_account_number', 'status', 'notes'
     ];
 
     protected $casts = [
@@ -26,6 +26,7 @@ class Employee extends Model
         'end_date' => 'date',
         'daily_rate' => 'decimal:2',
         'monthly_salary' => 'decimal:2',
+        'performance_rating' => 'integer',
     ];
 
     // Relationships

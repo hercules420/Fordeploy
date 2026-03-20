@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Notifications\Notifiable;
+use DateTimeInterface;
 
 class User extends Authenticatable
 {
@@ -27,6 +28,7 @@ class User extends Authenticatable
         'name',
         'email',
         'phone',
+        'location',
         'password',
         'role',
         'status',
@@ -82,6 +84,11 @@ class User extends Authenticatable
         return $this->hasMany(Notification::class);
     }
 
+    public function mobileAccessTokens(): HasMany
+    {
+        return $this->hasMany(MobileAccessToken::class);
+    }
+
     // Subscriptions (legacy)
     public function subscriptions(): HasMany
     {
@@ -109,6 +116,11 @@ class User extends Authenticatable
     public function supportMessages()
     {
         return $this->hasMany(SupportMessage::class, 'sender_id');
+    }
+
+    public function internalMessagesSent()
+    {
+        return $this->hasMany(InternalMessage::class, 'sender_id');
     }
 
     // Query Scopes
@@ -195,6 +207,11 @@ class User extends Authenticatable
         return $this->normalizeRoleValue($this->role) === 'hr';
     }
 
+    public function isFinance(): bool
+    {
+        return $this->normalizeRoleValue($this->role) === 'finance';
+    }
+
     public function isDepartmentRole(): bool
     {
         return in_array($this->normalizeRoleValue($this->role), self::DEPARTMENT_ROLES, true);
@@ -231,6 +248,33 @@ class User extends Authenticatable
     public function updateLastLogin()
     {
         $this->update(['last_login_at' => now()]);
+    }
+
+    public function issueMobileAccessToken(
+        string $name = 'consumer-app',
+        ?DateTimeInterface $expiresAt = null,
+    ): string {
+        $plainTextToken = bin2hex(random_bytes(40));
+
+        $this->mobileAccessTokens()->create([
+            'name' => $name,
+            'token_hash' => hash('sha256', $plainTextToken),
+            'last_used_at' => now(),
+            'expires_at' => $expiresAt,
+        ]);
+
+        return $plainTextToken;
+    }
+
+    public function revokeMobileAccessTokens(?string $name = null): void
+    {
+        $query = $this->mobileAccessTokens();
+
+        if ($name !== null) {
+            $query->where('name', $name);
+        }
+
+        $query->delete();
     }
 
     public function markEmailAsVerified()

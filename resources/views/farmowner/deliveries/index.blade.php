@@ -37,10 +37,12 @@
     <form method="GET" class="flex flex-wrap gap-4">
         <select name="status" class="px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500">
             <option value="">All Status</option>
-            <option value="pending" {{ request('status') === 'pending' ? 'selected' : '' }}>Pending</option>
+            <option value="preparing" {{ request('status') === 'preparing' ? 'selected' : '' }}>Preparing</option>
+            <option value="packed" {{ request('status') === 'packed' ? 'selected' : '' }}>Packed</option>
             <option value="assigned" {{ request('status') === 'assigned' ? 'selected' : '' }}>Assigned</option>
-            <option value="dispatched" {{ request('status') === 'dispatched' ? 'selected' : '' }}>Dispatched</option>
+            <option value="out_for_delivery" {{ request('status') === 'out_for_delivery' ? 'selected' : '' }}>Out for Delivery</option>
             <option value="delivered" {{ request('status') === 'delivered' ? 'selected' : '' }}>Delivered</option>
+            <option value="completed" {{ request('status') === 'completed' ? 'selected' : '' }}>Completed</option>
             <option value="failed" {{ request('status') === 'failed' ? 'selected' : '' }}>Failed</option>
         </select>
         <input type="date" name="date" value="{{ request('date') }}"
@@ -69,9 +71,9 @@
             <tbody class="divide-y divide-gray-600">
                 @forelse($deliveries as $delivery)
                 <tr class="hover:bg-gray-700">
-                    <td class="px-6 py-4 font-mono text-sm">{{ $delivery->delivery_number }}</td>
+                    <td class="px-6 py-4 font-mono text-sm">{{ $delivery->tracking_number }}</td>
                     <td class="px-6 py-4 text-gray-300">{{ $delivery->order?->order_number ?? '-' }}</td>
-                    <td class="px-6 py-4 font-medium text-white">{{ $delivery->customer_name }}</td>
+                    <td class="px-6 py-4 font-medium text-white">{{ $delivery->recipient_name }}</td>
                     <td class="px-6 py-4 text-gray-300 text-sm">{{ Str::limit($delivery->delivery_address, 25) }}</td>
                     <td class="px-6 py-4 text-gray-300">{{ $delivery->scheduled_date->format('M d') }}</td>
                     <td class="px-6 py-4">
@@ -92,12 +94,13 @@
                     </td>
                     <td class="px-6 py-4">
                         <span class="px-2 py-1 text-xs rounded-full 
-                            @if($delivery->status === 'delivered') bg-green-900 text-green-300
-                            @elseif($delivery->status === 'dispatched') bg-blue-900 text-blue-300
+                            @if(in_array($delivery->status, ['completed', 'delivered'], true)) bg-green-900 text-green-300
+                            @elseif($delivery->status === 'out_for_delivery') bg-blue-900 text-blue-300
                             @elseif($delivery->status === 'assigned') bg-purple-900 text-purple-300
+                            @elseif(in_array($delivery->status, ['preparing', 'packed'], true)) bg-yellow-900 text-yellow-300
                             @elseif($delivery->status === 'failed') bg-red-900 text-red-300
                             @else bg-yellow-900 text-yellow-300 @endif">
-                            {{ ucfirst($delivery->status) }}
+                            {{ ucwords(str_replace('_', ' ', $delivery->status)) }}
                         </span>
                     </td>
                     <td class="px-6 py-4">

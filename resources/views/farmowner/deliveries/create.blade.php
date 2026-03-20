@@ -18,7 +18,7 @@
                     <option value="">-- Manual Entry --</option>
                     @foreach($pendingOrders ?? [] as $order)
                     <option value="{{ $order->id }}" {{ old('order_id') == $order->id ? 'selected' : '' }}>
-                        {{ $order->order_number }} - {{ $order->customer_name }} (₱{{ number_format($order->total, 2) }})
+                        {{ $order->order_number }}
                     </option>
                     @endforeach
                 </select>
@@ -30,13 +30,13 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div>
                 <label class="block text-sm font-medium text-gray-300 mb-1">Customer Name *</label>
-                <input type="text" name="customer_name" value="{{ old('customer_name') }}" required
-                    class="w-full px-3 py-2 border border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 @error('customer_name') border-red-500 @enderror">
-                @error('customer_name')<p class="text-red-500 text-xs mt-1">{{ $message }}</p>@enderror
+                <input type="text" name="recipient_name" value="{{ old('recipient_name') }}" required
+                    class="w-full px-3 py-2 border border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 @error('recipient_name') border-red-500 @enderror">
+                @error('recipient_name')<p class="text-red-500 text-xs mt-1">{{ $message }}</p>@enderror
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-300 mb-1">Contact Phone *</label>
-                <input type="tel" name="customer_phone" value="{{ old('customer_phone') }}" required
+                <input type="tel" name="recipient_phone" value="{{ old('recipient_phone') }}" required
                     class="w-full px-3 py-2 border border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500">
             </div>
             <div class="md:col-span-2">
@@ -66,6 +66,7 @@
                     </option>
                     @endforeach
                 </select>
+                <p class="text-xs text-gray-400 mt-1">Logistics staff can assign now or later from the delivery details page.</p>
             </div>
         </div>
 
@@ -85,13 +86,13 @@
             </div>
             <div class="md:col-span-2">
                 <label class="block text-sm font-medium text-gray-300 mb-1">Items Description</label>
-                <textarea name="items_description" rows="2" placeholder="e.g., 50 eggs, 2kg dressed chicken"
-                    class="w-full px-3 py-2 border border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500">{{ old('items_description') }}</textarea>
+                <textarea name="delivery_notes" rows="2" placeholder="e.g., 50 eggs, 2kg dressed chicken"
+                    class="w-full px-3 py-2 border border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500">{{ old('delivery_notes') }}</textarea>
             </div>
             <div class="md:col-span-2">
                 <label class="block text-sm font-medium text-gray-300 mb-1">Special Notes</label>
-                <textarea name="notes" rows="2" placeholder="Delivery instructions, landmarks..."
-                    class="w-full px-3 py-2 border border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500">{{ old('notes') }}</textarea>
+                <textarea name="special_instructions" rows="2" placeholder="Delivery instructions, landmarks..."
+                    class="w-full px-3 py-2 border border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500">{{ old('special_instructions') }}</textarea>
             </div>
         </div>
 

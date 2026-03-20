@@ -1,19 +1,29 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HR - Department Users</title>
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
-</head>
-<body class="bg-gray-900 text-gray-200">
-    <div class="max-w-7xl mx-auto px-6 py-8">
-        <div class="flex justify-between items-center mb-6">
-            <div>
-                <h1 class="text-2xl font-bold text-white">Department Users</h1>
-                <p class="text-gray-400 text-sm">Manage role-based access by department</p>
-            </div>
-            <a href="{{ route('hr.users.create') }}" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold">+ Add User</a>
+@extends('hr.layouts.app')
+
+@section('title', 'Department Users')
+@section('header', 'Department Users')
+@section('subheader', 'Manage role-based access for workforce departments.')
+
+@section('header-actions')
+<a href="{{ route('hr.users.create') }}" class="rounded-lg bg-orange-600 px-4 py-2 font-semibold text-white hover:bg-orange-700">+ Add User</a>
+@endsection
+
+@section('content')
+    <div class="max-w-7xl">
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <a href="{{ route('employees.index') }}" class="rounded-lg border border-gray-700 bg-gray-800 p-4 hover:border-orange-500 transition">
+                <p class="text-sm font-semibold text-orange-400">Employee Hiring</p>
+                <p class="mt-1 text-sm text-gray-400">Create and manage employee accounts</p>
+            </a>
+            <a href="{{ route('payroll.index') }}" class="rounded-lg border border-gray-700 bg-gray-800 p-4 hover:border-orange-500 transition">
+                <p class="text-sm font-semibold text-orange-400">Payroll Preparation</p>
+                <p class="mt-1 text-sm text-gray-400">Prepare payroll records for owner approval</p>
+            </a>
+            <a href="{{ route('attendance.index') }}" class="rounded-lg border border-gray-700 bg-gray-800 p-4 hover:border-orange-500 transition">
+                <p class="text-sm font-semibold text-orange-400">Attendance</p>
+                <p class="mt-1 text-sm text-gray-400">Review attendance before payroll processing</p>
+            </a>
         </div>
 
         @if(session('success'))
@@ -54,5 +64,4 @@
             @endif
         </div>
     </div>
-</body>
-</html>
+@endsection

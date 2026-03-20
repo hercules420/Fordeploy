@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class FarmOwner extends Model
 {
@@ -165,5 +167,31 @@ class FarmOwner extends Model
     public function scopeWithStats(Builder $query)
     {
         return $query->selectRaw('*, COALESCE(average_rating, 0) as rating_score');
+    }
+
+    /**
+     * Return a browser-safe URL for the uploaded valid ID.
+     */
+    public function getValidIdUrlAttribute(): ?string
+    {
+        if (!$this->valid_id_path) {
+            return null;
+        }
+
+        $path = str_replace('\\\\', '/', trim($this->valid_id_path));
+
+        if (Str::startsWith($path, ['http://', 'https://'])) {
+            return $path;
+        }
+
+        if (Str::startsWith($path, 'storage/')) {
+            $path = Str::after($path, 'storage/');
+        }
+
+        if (Str::startsWith($path, 'public/')) {
+            $path = Str::after($path, 'public/');
+        }
+
+        return Storage::disk('public')->url($path);
     }
 }

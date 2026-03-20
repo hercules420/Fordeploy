@@ -32,12 +32,35 @@
                                 </div>
                             </td>
                             <td class="p-5">
+                                @php
+                                    $validIdPath = str_replace('\\\\', '/', trim((string) $request->valid_id_path));
+                                    if (\Illuminate\Support\Str::startsWith($validIdPath, 'storage/')) {
+                                        $validIdPath = \Illuminate\Support\Str::after($validIdPath, 'storage/');
+                                    }
+                                    if (\Illuminate\Support\Str::startsWith($validIdPath, 'public/')) {
+                                        $validIdPath = \Illuminate\Support\Str::after($validIdPath, 'public/');
+                                    }
+                                    $validIdUrl = \Illuminate\Support\Str::startsWith($validIdPath, ['http://', 'https://'])
+                                        ? $validIdPath
+                                        : \Illuminate\Support\Facades\Storage::disk('public')->url($validIdPath);
+
+                                    $permitPath = str_replace('\\\\', '/', trim((string) $request->business_permit_path));
+                                    if (\Illuminate\Support\Str::startsWith($permitPath, 'storage/')) {
+                                        $permitPath = \Illuminate\Support\Str::after($permitPath, 'storage/');
+                                    }
+                                    if (\Illuminate\Support\Str::startsWith($permitPath, 'public/')) {
+                                        $permitPath = \Illuminate\Support\Str::after($permitPath, 'public/');
+                                    }
+                                    $permitUrl = \Illuminate\Support\Str::startsWith($permitPath, ['http://', 'https://'])
+                                        ? $permitPath
+                                        : \Illuminate\Support\Facades\Storage::disk('public')->url($permitPath);
+                                @endphp
                                 <div class="flex flex-col gap-2">
-                                    <a href="{{ asset('storage/' . $request->valid_id_path) }}" target="_blank" 
+                                    <a href="{{ $validIdUrl }}" target="_blank" 
                                        class="text-[#ed8936] hover:text-[#f6ad55] text-xs font-bold flex items-center gap-1 uppercase">
                                         📄 View Valid ID
                                     </a>
-                                    <a href="{{ asset('storage/' . $request->business_permit_path) }}" target="_blank" 
+                                    <a href="{{ $permitUrl }}" target="_blank" 
                                        class="text-[#ed8936] hover:text-[#f6ad55] text-xs font-bold flex items-center gap-1 uppercase">
                                         📄 View Permit
                                     </a>

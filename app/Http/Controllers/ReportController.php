@@ -13,10 +13,12 @@ use App\Models\Employee;
 use App\Models\Payroll;
 use App\Models\FarmOwner;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use Carbon\CarbonPeriod;
 
 class ReportController extends Controller
 {
@@ -34,47 +36,184 @@ class ReportController extends Controller
     public function financial(Request $request)
     {
         $farmOwner = $this->getFarmOwner();
-        
-        $startDate = $request->filled('start_date') 
-            ? Carbon::parse($request->start_date) 
-            : now()->startOfMonth();
-        $endDate = $request->filled('end_date') 
-            ? Carbon::parse($request->end_date) 
-            : now()->endOfMonth();
+        $period = $request->input('period', 'month');
+        [$startDate, $endDate, $normalizedPeriod] = $this->resolveFinancialRange($request, $period);
 
-        // Income breakdown
         $income = IncomeRecord::byFarmOwner($farmOwner->id)
-            ->byDateRange($startDate, $endDate)
+            ->whereBetween('income_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->selectRaw('category, SUM(amount) as total')
             ->groupBy('category')
+            ->orderByDesc('total')
             ->get();
 
-        $totalIncome = $income->sum('total');
-
-        // Expense breakdown
         $expenses = Expense::byFarmOwner($farmOwner->id)
-            ->byDateRange($startDate, $endDate)
+            ->whereBetween('expense_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->selectRaw('category, SUM(total_amount) as total')
             ->groupBy('category')
+            ->orderByDesc('total')
             ->get();
 
-        $totalExpenses = $expenses->sum('total');
-
-        // Net profit
+        $totalIncome = (float) $income->sum('total');
+        $totalExpenses = (float) $expenses->sum('total');
         $netProfit = $totalIncome - $totalExpenses;
 
-        // Daily trend
-        $dailyTrend = DB::table('income_records')
-            ->where('farm_owner_id', $farmOwner->id)
-            ->whereBetween('income_date', [$startDate, $endDate])
-            ->selectRaw('DATE(income_date) as date, SUM(amount) as income')
-            ->groupBy('date')
-            ->orderBy('date')
-            ->get();
+        $series = $this->buildFinancialSeries($farmOwner->id, $startDate, $endDate, $normalizedPeriod);
+
+        $periodOptions = [
+            'day' => 'Daily',
+            'week' => 'Weekly',
+            'month' => 'Monthly',
+            'year' => 'Yearly',
+        ];
 
         return view('farmowner.reports.financial', compact(
-            'income', 'totalIncome', 'expenses', 'totalExpenses', 'netProfit', 'dailyTrend', 'startDate', 'endDate'
+            'income',
+            'totalIncome',
+            'expenses',
+            'totalExpenses',
+            'netProfit',
+            'series',
+            'startDate',
+            'endDate',
+            'periodOptions',
+            'normalizedPeriod'
         ));
+    }
+
+    public function financialSeries(Request $request): JsonResponse
+    {
+        $farmOwner = $this->getFarmOwner();
+        $period = $request->input('period', 'month');
+        [$startDate, $endDate, $normalizedPeriod] = $this->resolveFinancialRange($request, $period);
+
+        $series = $this->buildFinancialSeries($farmOwner->id, $startDate, $endDate, $normalizedPeriod);
+
+        return response()->json([
+            'period' => $normalizedPeriod,
+            'start_date' => $startDate->toDateString(),
+            'end_date' => $endDate->toDateString(),
+            'series' => $series,
+        ]);
+    }
+
+    private function resolveFinancialRange(Request $request, string $period): array
+    {
+        $normalizedPeriod = in_array($period, ['day', 'week', 'month', 'year'], true) ? $period : 'month';
+
+        if ($request->filled('start_date') && $request->filled('end_date')) {
+            $startDate = Carbon::parse((string) $request->input('start_date'))->startOfDay();
+            $endDate = Carbon::parse((string) $request->input('end_date'))->endOfDay();
+            return [$startDate, $endDate, $normalizedPeriod];
+        }
+
+        $now = now();
+        return match ($normalizedPeriod) {
+            'day' => [$now->copy()->subDays(29)->startOfDay(), $now->copy()->endOfDay(), $normalizedPeriod],
+            'week' => [$now->copy()->subWeeks(11)->startOfWeek(), $now->copy()->endOfWeek(), $normalizedPeriod],
+            'year' => [$now->copy()->subYears(4)->startOfYear(), $now->copy()->endOfYear(), $normalizedPeriod],
+            default => [$now->copy()->subMonths(11)->startOfMonth(), $now->copy()->endOfMonth(), $normalizedPeriod],
+        };
+    }
+
+    private function buildFinancialSeries(int $farmOwnerId, Carbon $startDate, Carbon $endDate, string $period): array
+    {
+        $incomeRows = IncomeRecord::byFarmOwner($farmOwnerId)
+            ->whereBetween('income_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->selectRaw($this->seriesBucketExpression('income_date', $period) . ' as bucket, SUM(amount) as total')
+            ->groupBy('bucket')
+            ->pluck('total', 'bucket');
+
+        $expenseRows = Expense::byFarmOwner($farmOwnerId)
+            ->whereBetween('expense_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->selectRaw($this->seriesBucketExpression('expense_date', $period) . ' as bucket, SUM(total_amount) as total')
+            ->groupBy('bucket')
+            ->pluck('total', 'bucket');
+
+        $labels = [];
+        $incomeSeries = [];
+        $expenseSeries = [];
+        $netSeries = [];
+
+        foreach ($this->seriesBuckets($startDate, $endDate, $period) as $bucket) {
+            $bucketKey = $bucket['key'];
+            $incomeValue = (float) ($incomeRows[$bucketKey] ?? 0);
+            $expenseValue = (float) ($expenseRows[$bucketKey] ?? 0);
+
+            $labels[] = $bucket['label'];
+            $incomeSeries[] = round($incomeValue, 2);
+            $expenseSeries[] = round($expenseValue, 2);
+            $netSeries[] = round($incomeValue - $expenseValue, 2);
+        }
+
+        return [
+            'labels' => $labels,
+            'income' => $incomeSeries,
+            'expenses' => $expenseSeries,
+            'net' => $netSeries,
+        ];
+    }
+
+    private function seriesBucketExpression(string $column, string $period): string
+    {
+        return match ($period) {
+            'day' => "DATE({$column})",
+            'week' => "strftime('%Y-W%W', {$column})",
+            'year' => "strftime('%Y', {$column})",
+            default => "strftime('%Y-%m', {$column})",
+        };
+    }
+
+    private function seriesBuckets(Carbon $startDate, Carbon $endDate, string $period): array
+    {
+        $buckets = [];
+
+        if ($period === 'week') {
+            $cursor = $startDate->copy()->startOfWeek();
+            while ($cursor->lte($endDate)) {
+                $buckets[] = [
+                    'key' => $cursor->format('o') . '-W' . $cursor->format('W'),
+                    'label' => 'W' . $cursor->format('W') . ' ' . $cursor->format('Y'),
+                ];
+                $cursor->addWeek();
+            }
+
+            return $buckets;
+        }
+
+        if ($period === 'year') {
+            $cursor = $startDate->copy()->startOfYear();
+            while ($cursor->lte($endDate)) {
+                $buckets[] = [
+                    'key' => $cursor->format('Y'),
+                    'label' => $cursor->format('Y'),
+                ];
+                $cursor->addYear();
+            }
+
+            return $buckets;
+        }
+
+        if ($period === 'month') {
+            $cursor = $startDate->copy()->startOfMonth();
+            while ($cursor->lte($endDate)) {
+                $buckets[] = [
+                    'key' => $cursor->format('Y-m'),
+                    'label' => $cursor->format('M Y'),
+                ];
+                $cursor->addMonth();
+            }
+
+            return $buckets;
+        }
+
+        foreach (CarbonPeriod::create($startDate->copy()->startOfDay(), $endDate->copy()->startOfDay()) as $date) {
+            $buckets[] = [
+                'key' => $date->format('Y-m-d'),
+                'label' => $date->format('M d'),
+            ];
+        }
+
+        return $buckets;
     }
 
     // Flock/Production Report

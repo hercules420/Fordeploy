@@ -1,4 +1,4 @@
-@extends('farmowner.layouts.app')
+@extends(auth()->user()?->isHR() ? 'hr.layouts.app' : 'farmowner.layouts.app')
 
 @section('title', 'Edit Employee')
 @section('header', 'Edit Employee')
@@ -42,6 +42,7 @@
         <!-- Employment Details -->
         <h3 class="font-semibold text-lg mb-4 pb-2 border-b border-gray-600">Employment Details</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            @if(Auth::user()?->isFarmOwner())
             <div>
                 <label class="block text-sm font-medium text-gray-300 mb-1">Department *</label>
                 <select name="department" required
@@ -54,6 +55,13 @@
                     <option value="admin" {{ old('department', $employee->department) === 'admin' ? 'selected' : '' }}>Admin</option>
                 </select>
             </div>
+            @else
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Department</label>
+                <input type="text" value="{{ ucfirst(str_replace('_', ' ', $employee->department)) }}" disabled
+                    class="w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-200 text-gray-700 cursor-not-allowed">
+            </div>
+            @endif
             <div>
                 <label class="block text-sm font-medium text-gray-300 mb-1">Position *</label>
                 <input type="text" name="position" value="{{ old('position', $employee->position) }}" required
@@ -69,6 +77,7 @@
                     <option value="seasonal" {{ old('employment_type', $employee->employment_type) === 'seasonal' ? 'selected' : '' }}>Seasonal</option>
                 </select>
             </div>
+            @if(Auth::user()?->isFarmOwner())
             <div>
                 <label class="block text-sm font-medium text-gray-300 mb-1">Status</label>
                 <select name="status"
@@ -86,11 +95,47 @@
                     class="w-full px-3 py-2 border border-gray-600 rounded-lg bg-white text-black placeholder-gray-500 focus:ring-2 focus:ring-green-500">
             </div>
             <div>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Performance Rating (1-5)</label>
+                <select name="performance_rating" class="w-full px-3 py-2 border border-gray-600 rounded-lg bg-white text-black focus:ring-2 focus:ring-green-500">
+                    @for($i = 1; $i <= 5; $i++)
+                        <option value="{{ $i }}" {{ (int) old('performance_rating', $employee->performance_rating ?? 3) === $i ? 'selected' : '' }}>{{ $i }}</option>
+                    @endfor
+                </select>
+            </div>
+            <div>
                 <label class="block text-sm font-medium text-gray-300 mb-1">Date Hired</label>
-                <input type="date" name="date_hired" value="{{ old('date_hired', $employee->date_hired?->format('Y-m-d')) }}"
+                <input type="date" name="hire_date" value="{{ old('hire_date', $employee->hire_date?->format('Y-m-d')) }}"
                     class="w-full px-3 py-2 border border-gray-600 rounded-lg bg-white text-black focus:ring-2 focus:ring-green-500">
             </div>
+            @else
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Status</label>
+                <input type="text" value="{{ ucfirst(str_replace('_', ' ', $employee->status)) }}" disabled
+                    class="w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-200 text-gray-700 cursor-not-allowed">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Daily Rate (₱)</label>
+                <input type="text" value="₱{{ number_format($employee->daily_rate ?? 0, 2) }}" disabled
+                    class="w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-200 text-gray-700 cursor-not-allowed">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Performance Rating</label>
+                <input type="text" value="{{ $employee->performance_rating ?? 3 }}/5" disabled
+                    class="w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-200 text-gray-700 cursor-not-allowed">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Hire Date</label>
+                <input type="date" name="hire_date" value="{{ old('hire_date', $employee->hire_date?->format('Y-m-d')) }}"
+                    class="w-full px-3 py-2 border border-gray-600 rounded-lg bg-white text-black focus:ring-2 focus:ring-green-500">
+            </div>
+            @endif
         </div>
+
+        @unless(Auth::user()?->isFarmOwner())
+        <div class="mb-6 rounded-lg border border-yellow-700 bg-yellow-900/30 px-4 py-3 text-sm text-yellow-200">
+            HR can update general employee details, but only the farm owner can change department, salary, status, or delete employee accounts.
+        </div>
+        @endunless
 
         <div class="flex gap-3">
             <button type="submit" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Update Employee</button>

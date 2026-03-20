@@ -22,7 +22,7 @@ class ClientRegistrationRequest extends FormRequest
         return [
             'owner_name'      => ['required', 'string', 'max:255'],
             'farm_name'       => ['required', 'string', 'max:255'],
-            'email'           => ['required', 'email', 'unique:client_requests,email'],
+            'email'           => ['required', 'email:rfc,dns', 'max:255', 'unique:client_requests,email', 'unique:users,email'],
             'farm_location'   => ['required', 'string'],
             'valid_id'        => ['required', 'image', 'mimes:jpeg,png,jpg', 'max:2048'],
             'business_permit' => ['required', 'mimes:pdf,jpeg,png,jpg', 'max:2048'],
@@ -38,6 +38,8 @@ class ClientRegistrationRequest extends FormRequest
         return [
             'owner_name.required'      => 'Owner name is required.',
             'farm_name.required'       => 'Farm name is required.',
+            'email.email'              => 'Please enter a valid email address.',
+            'email.dns'                => 'Please use a valid email domain that can receive mail.',
             'email.unique'             => 'This email is already registered.',
             'valid_id.required'        => 'Please upload a valid ID.',
             'valid_id.image'           => 'Valid ID must be an image.',

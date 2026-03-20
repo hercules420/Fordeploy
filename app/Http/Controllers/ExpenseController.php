@@ -12,10 +12,7 @@ use Carbon\Carbon;
 
 class ExpenseController extends Controller
 {
-    private function getFarmOwner()
-    {
-        return FarmOwner::where('user_id', Auth::id())->firstOrFail();
-    }
+    use \App\Http\Controllers\Concerns\ResolvesFarmOwner;
 
     public function index(Request $request)
     {
@@ -53,7 +50,7 @@ class ExpenseController extends Controller
                     ->where('expense_date', '>=', $thisMonthStart)
                     ->where('expense_date', '<', $nextMonthStart)
                     ->sum('total_amount'),
-                'unpaid' => Expense::byFarmOwner($farmOwner->id)->whereIn('payment_status', ['pending', 'overdue'])->sum('total_amount'),
+                'unpaid' => Expense::byFarmOwner($farmOwner->id)->whereIn('payment_status', ['pending', 'partial', 'overdue'])->sum('total_amount'),
                 'by_category' => Expense::byFarmOwner($farmOwner->id)
                     ->where('expense_date', '>=', $thisMonthStart)
                     ->where('expense_date', '<', $nextMonthStart)
@@ -80,13 +77,13 @@ class ExpenseController extends Controller
 
         $validated = $request->validate([
             'supplier_id' => 'nullable|exists:suppliers,id',
-            'category' => 'required|in:feeds,medications,utilities,equipment,labor,maintenance,transportation,packaging,miscellaneous',
+            'category' => 'required|in:feeds,vaccines,medications,utilities,labor,equipment,maintenance,transportation,marketing,taxes,insurance,miscellaneous',
             'description' => 'required|string|max:255',
             'amount' => 'nullable|numeric|min:0',
             'total_amount' => 'required|numeric|min:0',
             'expense_date' => 'required|date',
-            'payment_method' => 'nullable|in:cash,bank_transfer,check,credit,gcash',
-            'payment_status' => 'required|in:paid,unpaid,partial',
+            'payment_method' => 'nullable|in:cash,bank_transfer,check,credit,gcash,maya',
+            'payment_status' => 'required|in:pending,partial,paid,overdue',
             'due_date' => 'nullable|date',
             'reference_number' => 'nullable|string|max:100',
             'notes' => 'nullable|string',
@@ -128,12 +125,12 @@ class ExpenseController extends Controller
 
         $validated = $request->validate([
             'supplier_id' => 'nullable|exists:suppliers,id',
-            'category' => 'required|in:feeds,medications,utilities,equipment,labor,maintenance,transportation,packaging,miscellaneous',
+            'category' => 'required|in:feeds,vaccines,medications,utilities,labor,equipment,maintenance,transportation,marketing,taxes,insurance,miscellaneous',
             'description' => 'required|string|max:255',
             'amount' => 'nullable|numeric|min:0',
             'total_amount' => 'required|numeric|min:0',
             'expense_date' => 'required|date',
-            'payment_status' => 'required|in:paid,unpaid,partial',
+            'payment_status' => 'required|in:pending,partial,paid,overdue',
             'reference_number' => 'nullable|string|max:100',
             'notes' => 'nullable|string',
         ]);
@@ -161,7 +158,7 @@ class ExpenseController extends Controller
         abort_if($expense->farm_owner_id !== $farmOwner->id, 403);
 
         $validated = $request->validate([
-            'payment_method' => 'required|in:cash,bank_transfer,check,credit,gcash',
+            'payment_method' => 'required|in:cash,bank_transfer,check,credit,gcash,maya',
             'payment_reference' => 'nullable|string|max:100',
         ]);
 

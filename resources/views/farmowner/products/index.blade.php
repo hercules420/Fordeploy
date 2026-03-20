@@ -61,7 +61,7 @@
     </div>
     <div class="bg-gray-800 border border-gray-700 rounded-lg p-4 border-l-4 border-l-yellow-600">
         <p class="text-gray-400 text-xs">Low Stock</p>
-        <p class="text-2xl font-bold text-yellow-600">{{ $products->where('quantity_available', '<', 10)->count() }}</p>
+        <p class="text-2xl font-bold text-yellow-600">{{ $products->where('quantity_available', '<=', 20)->count() }}</p>
     </div>
     <div class="bg-gray-800 border border-gray-700 rounded-lg p-4 border-l-4 border-l-purple-600">
         <p class="text-gray-400 text-xs">Out of Stock</p>
@@ -108,7 +108,7 @@
                     </td>
                     <td class="px-6 py-4 font-medium text-white">₱{{ number_format($product->price, 2) }}</td>
                     <td class="px-6 py-4">
-                        <span class="{{ $product->quantity_available < 10 ? 'text-red-400 font-semibold' : 'text-gray-300' }}">
+                        <span class="{{ $product->quantity_available <= 20 ? 'text-red-400 font-semibold' : 'text-gray-300' }}">
                             {{ $product->quantity_available }}
                         </span>
                     </td>

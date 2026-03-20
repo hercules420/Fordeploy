@@ -11,10 +11,7 @@ use Carbon\Carbon;
 
 class AttendanceController extends Controller
 {
-    private function getFarmOwner()
-    {
-        return FarmOwner::where('user_id', Auth::id())->firstOrFail();
-    }
+    use \App\Http\Controllers\Concerns\ResolvesFarmOwner;
 
     public function index(Request $request)
     {

@@ -14,6 +14,12 @@ class FarmOwnerAuthController extends Controller
     public function show_login()
     {
         if (Auth::check() && Auth::user()->role === 'farm_owner') {
+            $farmOwner = Auth::user()->farmOwner;
+
+            if ($farmOwner && $farmOwner->permit_status !== 'approved') {
+                return redirect()->route('farmowner.pending');
+            }
+
             return redirect()->route('farmowner.dashboard');
         }
         return view('farmowner.login');
@@ -22,7 +28,7 @@ class FarmOwnerAuthController extends Controller
     public function login(Request $request)
     {
         $validated = $request->validate([
-            'email' => 'required|email',
+            'email' => 'required|email:rfc,dns',
             'password' => 'required|string|min:8',
         ]);
 
@@ -43,6 +49,13 @@ class FarmOwnerAuthController extends Controller
 
         Log::info('Farm owner logged in', ['user_id' => $user->id]);
 
+        $farmOwner = $user->farmOwner;
+
+        if ($farmOwner && $farmOwner->permit_status !== 'approved') {
+            return redirect()->route('farmowner.pending')
+                ->with('success', 'Your registration is under review by Super Admin.');
+        }
+
         return redirect()->route('farmowner.dashboard');
     }
 
@@ -58,7 +71,7 @@ class FarmOwnerAuthController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users',
+            'email' => 'required|email:rfc,dns|unique:users',
             'password' => 'required|string|min:8|confirmed',
             'phone' => 'nullable|string|max:20',
             'farm_name' => 'required|string|max:255|unique:farm_owners',
@@ -106,7 +119,7 @@ class FarmOwnerAuthController extends Controller
         Auth::login($user);
         $request->session()->regenerate();
 
-        return redirect()->route('farmowner.dashboard')->with('success', 'Farm registered successfully. Awaiting admin verification.');
+        return redirect()->route('farmowner.pending')->with('success', 'Farm registered successfully. Awaiting admin verification.');
     }
 
     public function logout(Request $request)

@@ -1,8 +1,8 @@
-@extends('farmowner.layouts.app')
+@extends(auth()->user()?->isHR() ? 'hr.layouts.app' : 'farmowner.layouts.app')
 
 @section('title', 'Payroll')
 @section('header', 'Payroll Management')
-@section('subheader', 'Process and manage employee payroll')
+@section('subheader', auth()->user()?->isHR() ? 'Prepare payroll records for farm-owner approval' : 'Process and manage employee payroll')
 
 @section('header-actions')
 <div class="flex gap-2">
@@ -17,7 +17,11 @@
         <p class="text-gray-400 text-xs">Pending Payroll</p>
         <p class="text-2xl font-bold text-yellow-600">₱{{ number_format($stats['pending'] ?? 0, 2) }}</p>
     </div>
-    <div class="bg-gray-800 border border-gray-700 rounded-lg p-4 border-l-4 border-green-600">
+    <div class="bg-gray-800 border border-gray-700 rounded-lg p-4 border-l-4 border-blue-600">
+        <p class="text-gray-400 text-xs">Pending Finance Approval</p>
+        <p class="text-2xl font-bold text-blue-600">₱{{ number_format($stats['pending_finance'] ?? 0, 2) }}</p>
+    </div>
+    <div class="bg-gray-800 border border-gray-700 rounded-lg p-4 border-l-4 border-green-600 md:col-span-2">
         <p class="text-gray-400 text-xs">Paid This Month</p>
         <p class="text-2xl font-bold text-green-600">₱{{ number_format($stats['paid_this_month'] ?? 0, 2) }}</p>
     </div>
@@ -29,6 +33,9 @@
         <select name="status" class="px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500">
             <option value="">All Status</option>
             <option value="pending" {{ request('status') === 'pending' ? 'selected' : '' }}>Pending</option>
+            <option value="pending_finance" {{ request('status') === 'pending_finance' ? 'selected' : '' }}>Pending Finance</option>
+            <option value="finance_approved" {{ request('status') === 'finance_approved' ? 'selected' : '' }}>Finance Approved</option>
+            <option value="released" {{ request('status') === 'released' ? 'selected' : '' }}>Payslip Released</option>
             <option value="approved" {{ request('status') === 'approved' ? 'selected' : '' }}>Approved</option>
             <option value="paid" {{ request('status') === 'paid' ? 'selected' : '' }}>Paid</option>
         </select>
@@ -50,13 +57,14 @@
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Basic Pay</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Net Pay</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Status</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Workflow</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Actions</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-600">
                 @forelse($payrolls as $payroll)
                 <tr class="hover:bg-gray-700">
-                    <td class="px-6 py-4 font-mono text-sm">{{ $payroll->payroll_number }}</td>
+                    <td class="px-6 py-4 font-mono text-sm">{{ $payroll->payroll_period }}</td>
                     <td class="px-6 py-4 font-medium text-white">{{ $payroll->employee?->full_name ?? 'N/A' }}</td>
                     <td class="px-6 py-4 text-gray-300 text-sm">
                         {{ $payroll->period_start->format('M d') }} - {{ $payroll->period_end->format('M d, Y') }}
@@ -72,12 +80,17 @@
                         </span>
                     </td>
                     <td class="px-6 py-4">
+                        <span class="px-2 py-1 text-xs rounded-full bg-gray-700 text-gray-300">
+                            {{ ucfirst(str_replace('_', ' ', $payroll->workflow_status ?? 'draft')) }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4">
                         <a href="{{ route('payroll.show', $payroll) }}" class="text-blue-400 hover:text-blue-300">View</a>
                     </td>
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="7" class="px-6 py-8 text-center text-gray-400">No payroll records found.</td>
+                    <td colspan="8" class="px-6 py-8 text-center text-gray-400">No payroll records found.</td>
                 </tr>
                 @endforelse
             </tbody>

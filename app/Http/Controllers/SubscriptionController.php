@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use App\Models\User;
 use App\Models\Subscription;
 use App\Models\FarmOwner;
+use App\Models\PayMongoWebhookEvent;
 use App\Services\PayMongoService;
 
 class SubscriptionController extends Controller
@@ -188,22 +189,102 @@ class SubscriptionController extends Controller
             return response()->json(['status' => 'invalid_signature'], 403);
         }
 
-        $payload = $request->all();
+        $payload = $request->json()->all();
         $eventType = $payload['data']['attributes']['type'] ?? null;
+        $eventId = $payload['data']['id'] ?? null;
+
+        if (!$eventId) {
+            Log::warning('PayMongo webhook: missing event id', ['payload' => $payload]);
+            return response()->json(['status' => 'missing_event_id'], 400);
+        }
+
+        $eventAction = 'process';
+        $eventLog = null;
+
+        DB::transaction(function () use ($eventId, $eventType, $rawPayload, &$eventAction, &$eventLog): void {
+            $existing = PayMongoWebhookEvent::where('event_id', $eventId)
+                ->lockForUpdate()
+                ->first();
+
+            if ($existing) {
+                if ($existing->status === 'processed') {
+                    $eventAction = 'duplicate';
+                    $eventLog = $existing;
+                    return;
+                }
+
+                if ($existing->status === 'processing' && $existing->updated_at && $existing->updated_at->gt(now()->subMinutes(2))) {
+                    $eventAction = 'in_progress';
+                    $eventLog = $existing;
+                    return;
+                }
+
+                $existing->update([
+                    'event_type' => $eventType,
+                    'status' => 'processing',
+                    'payload' => $rawPayload,
+                    'response_code' => null,
+                    'processed_at' => null,
+                    'error_message' => null,
+                ]);
+
+                $eventLog = $existing;
+                return;
+            }
+
+            $eventLog = PayMongoWebhookEvent::create([
+                'event_id' => $eventId,
+                'event_type' => $eventType,
+                'status' => 'processing',
+                'payload' => $rawPayload,
+            ]);
+        });
+
+        if ($eventAction === 'duplicate') {
+            return response()->json(['status' => 'duplicate_ignored'], 200);
+        }
+
+        if ($eventAction === 'in_progress') {
+            return response()->json(['status' => 'processing'], 202);
+        }
 
         Log::info('PayMongo webhook received', ['type' => $eventType]);
 
-        // Handle checkout session payment completed
-        if ($eventType === 'checkout_session.payment.paid') {
-            return $this->handleCheckoutPayment($payload);
-        }
+        try {
+            // Handle checkout session payment completed
+            if ($eventType === 'checkout_session.payment.paid') {
+                $response = $this->handleCheckoutPayment($payload);
+            } elseif ($eventType === 'link.payment.paid') {
+                // Handle payment link paid (fallback method)
+                $response = $this->handleLinkPayment($payload);
+            } else {
+                $response = response()->json(['status' => 'event_not_handled'], 200);
+            }
 
-        // Handle payment link paid (fallback method)
-        if ($eventType === 'link.payment.paid') {
-            return $this->handleLinkPayment($payload);
-        }
+            $eventLog?->update([
+                'status' => 'processed',
+                'response_code' => $response->getStatusCode(),
+                'processed_at' => now(),
+                'error_message' => null,
+            ]);
 
-        return response()->json(['status' => 'event_not_handled'], 200);
+            return $response;
+        } catch (\Throwable $e) {
+            $eventLog?->update([
+                'status' => 'failed',
+                'response_code' => 500,
+                'processed_at' => now(),
+                'error_message' => mb_substr($e->getMessage(), 0, 1000),
+            ]);
+
+            Log::error('PayMongo webhook processing failed', [
+                'event_id' => $eventId,
+                'event_type' => $eventType,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json(['status' => 'error'], 500);
+        }
     }
 
     /**
@@ -221,6 +302,15 @@ class SubscriptionController extends Controller
         $attributes = $checkoutData['attributes'] ?? [];
         $metadata = $attributes['metadata'] ?? [];
         $payments = $attributes['payments'] ?? [];
+
+        if (($metadata['purpose'] ?? null) === 'marketplace_order') {
+            return $this->activateMarketplaceOrder(
+                (string) ($metadata['order_id'] ?? ''),
+                $checkoutData['id'] ?? null,
+                !empty($payments) ? ($payments[0]['id'] ?? null) : null,
+                $metadata['payment_method'] ?? null,
+            );
+        }
 
         $userId = $metadata['user_id'] ?? null;
         $farmOwnerId = $metadata['farm_owner_id'] ?? null;
@@ -254,6 +344,15 @@ class SubscriptionController extends Controller
             $segments = explode(':', $part, 2);
             return [($segments[0] ?? '') => ($segments[1] ?? '')];
         });
+
+        if (($parts['PURPOSE'] ?? null) === 'MARKETPLACE_ORDER') {
+            return $this->activateMarketplaceOrder(
+                (string) ($parts['ORDER_ID'] ?? ''),
+                $linkData['id'] ?? null,
+                $linkData['id'] ?? null,
+                isset($parts['PAYMENT_METHOD']) ? strtolower((string) $parts['PAYMENT_METHOD']) : null,
+            );
+        }
 
         $userId = $parts['USER_ID'] ?? null;
         $farmOwnerId = $parts['FARM_OWNER_ID'] ?? null;
@@ -351,6 +450,74 @@ class SubscriptionController extends Controller
             'farm_owner_id' => $farmOwner->id,
             'plan' => $plan,
             'paymongo_id' => $paymongoId,
+        ]);
+
+        return response()->json(['status' => 'success'], 200);
+    }
+
+    protected function activateMarketplaceOrder(
+        string $orderId,
+        ?string $paymongoId = null,
+        ?string $paymentId = null,
+        ?string $paymentMethod = null
+    ): \Illuminate\Http\JsonResponse {
+        if ($orderId === '') {
+            Log::warning('PayMongo order webhook: missing order id');
+            return response()->json(['status' => 'error'], 400);
+        }
+
+        $order = \App\Models\Order::with(['consumer:id,name', 'farmOwner:id,user_id,farm_name'])->find($orderId);
+        if (!$order) {
+            Log::warning('PayMongo order webhook: order not found', ['order_id' => $orderId]);
+            return response()->json(['status' => 'error'], 404);
+        }
+
+        if ($order->payment_status === 'paid') {
+            return response()->json(['status' => 'already_processed'], 200);
+        }
+
+        $order->update([
+            'payment_status' => 'paid',
+            'payment_method' => $paymentMethod ?: $order->payment_method,
+            'paymongo_payment_id' => $order->paymongo_payment_id ?: ($paymentId ?: $paymongoId),
+        ]);
+
+        if ($order->consumer_id) {
+            \App\Models\Notification::create([
+                'user_id' => $order->consumer_id,
+                'title' => 'Payment Confirmed',
+                'message' => "Payment for order {$order->order_number} was confirmed via PayMongo.",
+                'type' => 'system',
+                'channel' => 'in_app',
+                'data' => [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                ],
+                'status' => 'sent',
+                'sent_at' => now(),
+            ]);
+        }
+
+        if ($order->farmOwner?->user_id) {
+            \App\Models\Notification::create([
+                'user_id' => $order->farmOwner->user_id,
+                'title' => 'Customer Payment Received',
+                'message' => "Order {$order->order_number} has been paid online.",
+                'type' => 'alert',
+                'channel' => 'in_app',
+                'data' => [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                ],
+                'status' => 'sent',
+                'sent_at' => now(),
+            ]);
+        }
+
+        Log::info('Marketplace order marked as paid', [
+            'order_id' => $order->id,
+            'paymongo_id' => $paymongoId,
+            'payment_id' => $paymentId,
         ]);
 
         return response()->json(['status' => 'success'], 200);

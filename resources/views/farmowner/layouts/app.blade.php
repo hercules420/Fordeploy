@@ -6,6 +6,32 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'Farm Portal') - Poultry System</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <style>
+        /* Global form input styling for better visibility */
+        input[type="text"],
+        input[type="email"],
+        input[type="password"],
+        input[type="number"],
+        input[type="date"],
+        input[type="datetime-local"],
+        input[type="time"],
+        input[type="url"],
+        input[type="tel"],
+        input[type="search"],
+        select,
+        textarea {
+            background-color: white !important;
+            color: black !important;
+        }
+        input::placeholder,
+        textarea::placeholder {
+            color: #6b7280 !important;
+        }
+        select option {
+            background-color: white;
+            color: black;
+        }
+    </style>
     @stack('styles')
 </head>
 <body class="bg-gray-900 text-gray-200">
@@ -50,6 +76,41 @@
             </div>
         </main>
     </div>
+    <script>
+        // Preserve scroll position in sidebar when navigating
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.querySelector('aside nav');
+            const mainContent = document.querySelector('main');
+            
+            // Restore scroll positions on page load
+            if (sidebar) {
+                const savedSidebarScroll = sessionStorage.getItem('sidebarScrollPos');
+                if (savedSidebarScroll) {
+                    sidebar.scrollTop = parseInt(savedSidebarScroll);
+                }
+            }
+            
+            if (mainContent) {
+                const savedMainScroll = sessionStorage.getItem('mainScrollPos');
+                if (savedMainScroll) {
+                    mainContent.scrollTop = parseInt(savedMainScroll);
+                }
+            }
+            
+            // Save scroll positions on navigation
+            const sidebarLinks = document.querySelectorAll('aside nav a');
+            sidebarLinks.forEach(link => {
+                link.addEventListener('click', function() {
+                    if (sidebar) {
+                        sessionStorage.setItem('sidebarScrollPos', sidebar.scrollTop);
+                    }
+                    if (mainContent) {
+                        sessionStorage.setItem('mainScrollPos', mainContent.scrollTop);
+                    }
+                });
+            });
+        });
+    </script>
     @stack('scripts')
 </body>
 </html>

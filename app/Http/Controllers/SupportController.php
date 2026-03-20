@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Notification;
 use App\Models\SupportMessage;
 use App\Models\SupportTicket;
 use Illuminate\Http\Request;
@@ -9,6 +10,47 @@ use Illuminate\Support\Facades\Auth;
 
 class SupportController extends Controller
 {
+    public function farmOwnerNotifications()
+    {
+        $farmOwner = Auth::user()->farmOwner;
+
+        if (!$farmOwner) {
+            return redirect()->route('farmowner.dashboard')->with('error', 'Farm owner profile not found.');
+        }
+
+        $notifications = Notification::forUser(Auth::id())
+            ->where(function ($query) {
+                $query->where('type', 'alert')
+                    ->orWhere('title', 'like', 'Customer Complaint:%');
+            })
+            ->orderByDesc('created_at')
+            ->paginate(20);
+
+        return view('farmowner.notifications.index', compact('notifications'));
+    }
+
+    public function farmOwnerMarkNotificationsRead()
+    {
+        $farmOwner = Auth::user()->farmOwner;
+
+        if (!$farmOwner) {
+            return redirect()->route('farmowner.dashboard')->with('error', 'Farm owner profile not found.');
+        }
+
+        Notification::forUser(Auth::id())
+            ->where(function ($query) {
+                $query->where('type', 'alert')
+                    ->orWhere('title', 'like', 'Customer Complaint:%');
+            })
+            ->unread()
+            ->update([
+                'is_read' => true,
+                'read_at' => now(),
+            ]);
+
+        return redirect()->route('farmowner.notifications.index')->with('success', 'All complaint notifications marked as read.');
+    }
+
     public function farmOwnerIndex()
     {
         $farmOwner = Auth::user()->farmOwner;

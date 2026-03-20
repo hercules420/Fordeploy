@@ -6,13 +6,18 @@ use App\Models\Delivery;
 use App\Models\Driver;
 use App\Models\Order;
 use App\Models\FarmOwner;
+use App\Models\IncomeRecord;
+use App\Models\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\Rule;
 use Carbon\Carbon;
 
 class DeliveryController extends Controller
 {
+    use \App\Http\Controllers\Concerns\ResolvesFarmOwner;
+
     private function statsCacheKey(int $farmOwnerId): string
     {
         return "farm_{$farmOwnerId}_delivery_stats";
@@ -21,11 +26,6 @@ class DeliveryController extends Controller
     private function clearStatsCache(int $farmOwnerId): void
     {
         Cache::forget($this->statsCacheKey($farmOwnerId));
-    }
-
-    private function getFarmOwner()
-    {
-        return FarmOwner::where('user_id', Auth::id())->firstOrFail();
     }
 
     public function index(Request $request)
@@ -51,10 +51,10 @@ class DeliveryController extends Controller
             $tomorrowStart = now()->startOfDay()->addDay()->toDateTimeString();
 
             $aggregate = Delivery::byFarmOwner($farmOwner->id)
-                ->selectRaw("SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending")
-                ->selectRaw("SUM(CASE WHEN status = 'dispatched' THEN 1 ELSE 0 END) as dispatched")
+                ->selectRaw("SUM(CASE WHEN status IN ('preparing', 'packed', 'assigned') THEN 1 ELSE 0 END) as pending")
+                ->selectRaw("SUM(CASE WHEN status = 'out_for_delivery' THEN 1 ELSE 0 END) as dispatched")
                 ->selectRaw(
-                    "SUM(CASE WHEN status = 'delivered' AND delivered_at >= ? AND delivered_at < ? THEN 1 ELSE 0 END) as delivered_today",
+                    "SUM(CASE WHEN status IN ('delivered', 'completed') AND delivered_at >= ? AND delivered_at < ? THEN 1 ELSE 0 END) as delivered_today",
                     [$todayStart, $tomorrowStart]
                 )
                 ->selectRaw("COALESCE(SUM(CASE WHEN cod_collected = false AND cod_amount > 0 THEN cod_amount ELSE 0 END), 0) as cod_pending")
@@ -91,7 +91,12 @@ class DeliveryController extends Controller
 
         $validated = $request->validate([
             'order_id' => 'nullable|exists:orders,id',
-            'driver_id' => 'nullable|exists:drivers,id',
+            'driver_id' => [
+                'nullable',
+                Rule::exists('drivers', 'id')->where(function ($query) use ($farmOwner) {
+                    $query->where('farm_owner_id', $farmOwner->id)->where('status', 'available');
+                }),
+            ],
             'recipient_name' => 'required|string|max:255',
             'recipient_phone' => 'required|string|max:20',
             'delivery_address' => 'required|string',
@@ -112,9 +117,13 @@ class DeliveryController extends Controller
 
         $delivery = Delivery::create($validated);
 
-        // If driver assigned, auto-assign
+        // Staff assigns driver manually when needed.
         if ($delivery->driver_id) {
             $delivery->assignDriver($delivery->driver_id, Auth::id());
+        }
+
+        if ($delivery->order && in_array((string) $delivery->order->status, ['confirmed', 'pending'], true)) {
+            $delivery->order->update(['status' => 'processing']);
         }
 
         $this->clearStatsCache($farmOwner->id);
@@ -128,8 +137,12 @@ class DeliveryController extends Controller
         abort_if($delivery->farm_owner_id !== $farmOwner->id, 403);
 
         $delivery->load(['order', 'driver', 'assignedBy']);
+        $availableDrivers = Driver::byFarmOwner($farmOwner->id)
+            ->available()
+            ->select('id', 'name', 'vehicle_type')
+            ->get();
 
-        return view('farmowner.deliveries.show', compact('delivery'));
+        return view('farmowner.deliveries.show', compact('delivery', 'availableDrivers'));
     }
 
     public function edit(Delivery $delivery)
@@ -171,14 +184,46 @@ class DeliveryController extends Controller
         $farmOwner = $this->getFarmOwner();
         abort_if($delivery->farm_owner_id !== $farmOwner->id, 403);
 
+        if (!in_array((string) $delivery->status, ['packed', 'preparing'], true)) {
+            return redirect()->route('deliveries.show', $delivery)
+                ->with('error', 'Driver can only be assigned while delivery is in preparing/packed stage.');
+        }
+
         $validated = $request->validate([
-            'driver_id' => 'required|exists:drivers,id',
+            'driver_id' => [
+                'required',
+                Rule::exists('drivers', 'id')->where(function ($query) use ($farmOwner) {
+                    $query->where('farm_owner_id', $farmOwner->id)->where('status', 'available');
+                }),
+            ],
         ]);
 
-        $delivery->assignDriver($validated['driver_id'], Auth::id());
+        $delivery->assignDriver((int) $validated['driver_id'], Auth::id());
         $this->clearStatsCache($farmOwner->id);
 
         return redirect()->route('deliveries.show', $delivery)->with('success', 'Driver assigned.');
+    }
+
+    public function markPacked(Delivery $delivery)
+    {
+        $farmOwner = $this->getFarmOwner();
+        abort_if($delivery->farm_owner_id !== $farmOwner->id, 403);
+
+        if ($delivery->status !== 'preparing') {
+            return redirect()->route('deliveries.show', $delivery)
+                ->with('error', 'Only preparing deliveries can be marked as packed.');
+        }
+
+        $delivery->markPacked();
+
+        if ($delivery->order && in_array((string) $delivery->order->status, ['confirmed', 'processing'], true)) {
+            // "ready_for_pickup" is used as packed/ready stage in the order table lifecycle.
+            $delivery->order->update(['status' => 'ready_for_pickup']);
+        }
+
+        $this->clearStatsCache($farmOwner->id);
+
+        return redirect()->route('deliveries.show', $delivery)->with('success', 'Delivery marked as packed.');
     }
 
     public function dispatch(Delivery $delivery)
@@ -187,7 +232,37 @@ class DeliveryController extends Controller
         abort_if($delivery->farm_owner_id !== $farmOwner->id, 403);
         abort_unless($delivery->driver_id, 403, 'Assign driver first.');
 
+        if (!in_array((string) $delivery->status, ['assigned', 'packed'], true)) {
+            return redirect()->route('deliveries.show', $delivery)
+                ->with('error', 'Only packed/assigned deliveries can be dispatched.');
+        }
+
         $delivery->dispatch();
+
+        if ($delivery->order) {
+            $delivery->order->update(['status' => 'shipped']);
+        }
+
+        // Delivery tracking update is notification-only and sent when status turns out-for-delivery.
+        if ($delivery->order && $delivery->order->consumer_id) {
+            Notification::create([
+                'user_id' => $delivery->order->consumer_id,
+                'title' => 'Out for Delivery',
+                'message' => "Your order {$delivery->order->order_number} is now out for delivery.",
+                'type' => 'delivery_update',
+                'channel' => 'in_app',
+                'data' => [
+                    'order_id' => $delivery->order->id,
+                    'order_number' => $delivery->order->order_number,
+                    'delivery_id' => $delivery->id,
+                    'tracking_number' => $delivery->tracking_number,
+                    'status' => 'out_for_delivery',
+                ],
+                'status' => 'sent',
+                'sent_at' => now(),
+            ]);
+        }
+
         $this->clearStatsCache($farmOwner->id);
 
         return redirect()->route('deliveries.show', $delivery)->with('success', 'Delivery dispatched.');
@@ -206,6 +281,13 @@ class DeliveryController extends Controller
 
         $delivery->markDelivered($validated['proof_of_delivery'] ?? null);
 
+        if ($delivery->order) {
+            $delivery->order->markAsDelivered();
+            IncomeRecord::where('order_id', $delivery->order->id)
+                ->update(['payment_status' => 'received']);
+            Cache::forget("farm_{$farmOwner->id}_income_stats");
+        }
+
         // Update COD collection status if applicable
         if (isset($validated['cod_collected'])) {
             $delivery->update(['cod_collected' => $validated['cod_collected']]);
@@ -214,6 +296,27 @@ class DeliveryController extends Controller
         $this->clearStatsCache($farmOwner->id);
 
         return redirect()->route('deliveries.show', $delivery)->with('success', 'Delivery completed.');
+    }
+
+    public function markCompleted(Delivery $delivery)
+    {
+        $farmOwner = $this->getFarmOwner();
+        abort_if($delivery->farm_owner_id !== $farmOwner->id, 403);
+
+        if ($delivery->status !== 'delivered') {
+            return redirect()->route('deliveries.show', $delivery)
+                ->with('error', 'Only delivered records can be marked as completed.');
+        }
+
+        $delivery->markCompleted();
+
+        if ($delivery->order) {
+            $delivery->order->update(['status' => 'completed']);
+        }
+
+        $this->clearStatsCache($farmOwner->id);
+
+        return redirect()->route('deliveries.show', $delivery)->with('success', 'Delivery record completed.');
     }
 
     public function markFailed(Request $request, Delivery $delivery)
@@ -248,7 +351,7 @@ class DeliveryController extends Controller
             ->get();
 
         $unscheduled = Delivery::byFarmOwner($farmOwner->id)
-            ->byStatus('pending')
+            ->whereIn('status', ['preparing', 'packed'])
             ->whereNull('driver_id')
             ->get();
 

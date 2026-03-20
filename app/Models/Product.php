@@ -14,8 +14,12 @@ class Product extends Model
     protected $fillable = [
         'farm_owner_id', 'sku', 'name', 'description', 'category', 'status',
         'quantity_available', 'quantity_sold', 'price', 'cost_price', 'attributes',
-        'unit', 'minimum_order', 'discount_percentage', 'image_url', 'image_urls',
-        'view_count', 'favorite_count', 'average_rating', 'review_count', 'published_at'
+        'unit', 'minimum_order', 'is_bulk_order_enabled', 'order_quantity_step',
+        'order_quantity_options',
+        'discount_percentage', 'image_url', 'image_urls',
+        'published_at'
+        // view_count, favorite_count, average_rating, review_count are server-managed aggregates
+        // and must never be set directly from user input.
     ];
 
     protected $casts = [
@@ -26,6 +30,9 @@ class Product extends Model
         'discount_percentage' => 'decimal:2',
         'average_rating' => 'decimal:2',
         'published_at' => 'datetime',
+        'is_bulk_order_enabled' => 'boolean',
+        'order_quantity_step' => 'integer',
+        'order_quantity_options' => 'json',
     ];
 
     // Relationships
@@ -112,5 +119,66 @@ class Product extends Model
     public function getIsFavoriteAttribute(): bool
     {
         return $this->favorite_count > 0;
+    }
+
+    public function getEffectiveOrderStepAttribute(): int
+    {
+        if (!$this->is_bulk_order_enabled) {
+            return 1;
+        }
+
+        return max(1, (int) ($this->order_quantity_step ?: 1));
+    }
+
+    public function getNormalizedOrderQuantityOptionsAttribute(): array
+    {
+        $options = is_array($this->order_quantity_options) ? $this->order_quantity_options : [];
+
+        $normalized = collect($options)
+            ->map(fn($value) => (int) $value)
+            ->filter(fn($value) => $value > 0)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        return $normalized;
+    }
+
+    public function validateOrderQuantity(int $quantity): ?string
+    {
+        if ($quantity < 1) {
+            return 'Quantity must be at least 1.';
+        }
+
+        // If explicit choices are configured, treat them as allowed pack sizes.
+        // Final quantity can be any positive multiple of at least one configured pack size.
+        $optionList = $this->normalized_order_quantity_options;
+        if (!empty($optionList)) {
+            $isValidMultiple = collect($optionList)->contains(function ($option) use ($quantity) {
+                $option = (int) $option;
+                return $option > 0 && $quantity % $option === 0;
+            });
+
+            if (!$isValidMultiple) {
+                return "{$this->name} quantity must be a multiple of one of these choices: " . implode(', ', $optionList) . " {$this->unit}.";
+            }
+
+            return null;
+        }
+
+        $minimumOrder = max(1, (int) ($this->minimum_order ?: 1));
+        if ($quantity < $minimumOrder) {
+            return "Minimum order for {$this->name} is {$minimumOrder} {$this->unit}.";
+        }
+
+        if ($this->is_bulk_order_enabled) {
+            $step = $this->effective_order_step;
+            if ($quantity % $step !== 0) {
+                return "{$this->name} must be ordered in multiples of {$step} {$this->unit}.";
+            }
+        }
+
+        return null;
     }
 }

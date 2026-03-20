@@ -12,10 +12,7 @@ use Carbon\Carbon;
 
 class IncomeController extends Controller
 {
-    private function getFarmOwner()
-    {
-        return FarmOwner::where('user_id', Auth::id())->firstOrFail();
-    }
+    use \App\Http\Controllers\Concerns\ResolvesFarmOwner;
 
     public function index(Request $request)
     {
@@ -73,11 +70,11 @@ class IncomeController extends Controller
 
         $validated = $request->validate([
             'order_id' => 'nullable|exists:orders,id',
-            'category' => 'required|in:egg_sales,chicken_sales,manure_sales,chick_sales,feed_sales,other',
+            'category' => 'required|in:product_sales,egg_sales,chicken_sales,chick_sales,feed_sales,service_income,other',
             'description' => 'required|string|max:255',
             'amount' => 'required|numeric|min:0',
             'income_date' => 'required|date',
-            'payment_method' => 'nullable|in:cash,bank_transfer,check,gcash,credit',
+            'payment_method' => 'nullable|in:cash,bank_transfer,check,gcash,maya,credit',
             'reference_number' => 'nullable|string|max:100',
             'customer_name' => 'nullable|string|max:255',
             'customer_contact' => 'nullable|string|max:100',
@@ -117,11 +114,11 @@ class IncomeController extends Controller
         abort_if($income->farm_owner_id !== $farmOwner->id, 403);
 
         $validated = $request->validate([
-            'category' => 'required|in:egg_sales,chicken_sales,manure_sales,chick_sales,feed_sales,other',
+            'category' => 'required|in:product_sales,egg_sales,chicken_sales,chick_sales,feed_sales,service_income,other',
             'description' => 'required|string|max:255',
             'amount' => 'required|numeric|min:0',
             'income_date' => 'required|date',
-            'payment_method' => 'nullable|in:cash,bank_transfer,check,gcash,credit',
+            'payment_method' => 'nullable|in:cash,bank_transfer,check,gcash,maya,credit',
             'customer_name' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
         ]);

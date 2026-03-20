@@ -18,8 +18,10 @@
                 <a href="{{ route('superadmin.dashboard') }}" class="block px-4 py-3 hover:bg-gray-700 rounded-lg">Dashboard</a>
                 <a href="{{ route('superadmin.farm_owners') }}" class="block px-4 py-3 bg-orange-600 text-white rounded-lg">Farm Owners</a>
                 <a href="{{ route('superadmin.orders') }}" class="block px-4 py-3 hover:bg-gray-700 rounded-lg">Orders</a>
+                <a href="{{ route('superadmin.monitoring') }}" class="block px-4 py-3 hover:bg-gray-700 rounded-lg">Monitoring</a>
                 <a href="{{ route('superadmin.subscriptions') }}" class="block px-4 py-3 hover:bg-gray-700 rounded-lg">Subscriptions</a>
                 <a href="{{ route('superadmin.users') }}" class="block px-4 py-3 hover:bg-gray-700 rounded-lg">Users</a>
+                <a href="{{ route('superadmin.support.index') }}" class="block px-4 py-3 hover:bg-gray-700 rounded-lg">Support</a>
                 <hr class="my-4 border-gray-600">
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf
@@ -56,8 +58,8 @@
                                 <td class="px-6 py-4 font-semibold">{{ $owner->farm_name ?? 'N/A' }}</td>
                                 <td class="px-6 py-4">{{ $owner->user?->name ?? 'Unknown' }}</td>
                                 <td class="px-6 py-4">
-                                    @if($owner->valid_id_path)
-                                    <a href="{{ asset('storage/' . $owner->valid_id_path) }}" target="_blank" class="text-blue-400 hover:text-blue-300 underline text-xs">View ID</a>
+                                    @if($owner->valid_id_url)
+                                    <a href="{{ $owner->valid_id_url }}" target="_blank" class="text-blue-400 hover:text-blue-300 underline text-xs">View ID</a>
                                     @else
                                     <span class="text-gray-500 text-xs">No ID</span>
                                     @endif

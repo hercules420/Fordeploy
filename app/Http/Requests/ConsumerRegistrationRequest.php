@@ -21,7 +21,7 @@ class ConsumerRegistrationRequest extends FormRequest
     {
         return [
             'full_name'    => ['required', 'string', 'max:255'],
-            'email'        => ['required', 'email', 'max:255', 'unique:users,email'],
+            'email'        => ['required', 'email:rfc,dns', 'max:255', 'unique:users,email'],
             'phone_number' => ['required', 'string', 'max:20'],
             'address'      => ['nullable', 'string'],
             'password'     => ['required', 'string', 'min:8', 'confirmed'],
@@ -35,6 +35,8 @@ class ConsumerRegistrationRequest extends FormRequest
     {
         return [
             'full_name.required'    => 'Full name is required.',
+            'email.email'           => 'Please enter a valid email address.',
+            'email.dns'             => 'Please use a valid email domain that can receive mail.',
             'email.unique'          => 'This email is already registered.',
             'phone_number.required' => 'Phone number is required.',
             'password.confirmed'    => 'Passwords do not match.',

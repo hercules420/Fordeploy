@@ -13,6 +13,7 @@ class Expense extends Model
 
     protected $fillable = [
         'farm_owner_id', 'recorded_by', 'approved_by', 'supplier_id', 'expense_number',
+        'source_type', 'source_id', 'is_auto_generated',
         'category', 'subcategory', 'description', 'amount', 'tax_amount', 'total_amount',
         'expense_date', 'due_date', 'payment_status', 'payment_method', 'reference_number',
         'receipt_url', 'status', 'notes'
@@ -24,6 +25,7 @@ class Expense extends Model
         'total_amount' => 'decimal:2',
         'expense_date' => 'date',
         'due_date' => 'date',
+        'is_auto_generated' => 'boolean',
     ];
 
     // Relationships

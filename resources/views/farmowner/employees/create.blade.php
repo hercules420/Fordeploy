@@ -1,4 +1,4 @@
-@extends('farmowner.layouts.app')
+@extends(auth()->user()?->isHR() ? 'hr.layouts.app' : 'farmowner.layouts.app')
 
 @section('title', 'Add Employee')
 @section('header', 'Add New Employee')
@@ -91,6 +91,14 @@
                     <label class="block text-sm font-medium text-gray-300 mb-1">Monthly Salary (₱)</label>
                     <input type="number" name="monthly_salary" value="{{ old('monthly_salary') }}" step="0.01" min="0"
                         class="w-full px-3 py-2 border border-gray-600 rounded-lg bg-white text-black placeholder-gray-500 focus:ring-2 focus:ring-green-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Performance Rating (1-5)</label>
+                    <select name="performance_rating" class="w-full px-3 py-2 border border-gray-600 rounded-lg bg-white text-black focus:ring-2 focus:ring-green-500">
+                        @for($i = 1; $i <= 5; $i++)
+                            <option value="{{ $i }}" {{ (int) old('performance_rating', 3) === $i ? 'selected' : '' }}>{{ $i }}</option>
+                        @endfor
+                    </select>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-300 mb-1">Account Password *</label>

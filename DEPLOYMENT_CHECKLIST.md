@@ -17,7 +17,7 @@
 - ✅ Password hashed with bcrypt
 - ✅ Policies enforce authorization
 - ✅ CSRF protection on all POST/PATCH/DELETE
-- ✅ No hardcoded credentials
+- ✅ No hardcoded credentialsdived
 - ✅ Validation on all user inputs
 - ✅ Exception handling prevents info leakage
 
@@ -65,6 +65,18 @@ npm run build
 php artisan migrate --force
 ```
 
+### 3.1 PayMongo Idempotency and Reconciliation Setup
+```bash
+# Verify webhook idempotency table exists
+php artisan migrate --force
+
+# Register webhook endpoint in PayMongo (if not yet registered)
+php artisan paymongo:register-webhook
+
+# Dry-run reconciliation for unpaid online orders
+php artisan paymongo:reconcile-marketplace-payments --dry-run --limit=100
+```
+
 ### 4. Cache Configuration
 ```bash
 php artisan config:cache
@@ -109,8 +121,16 @@ Ensure HTTPS is enabled (Let's Encrypt recommended)
   - PayMongo link opens
   - Complete payment
   - Webhook processes successfully
+  - Duplicate webhook delivery does not double-process payments
   - Subscription created in database
   - User sees success page with days remaining
+
+- [ ] **Marketplace Online Payment Reliability**
+  - Place marketplace order with `gcash` or `paymaya`
+  - Complete PayMongo checkout
+  - Order updates to `payment_status=paid`
+  - Re-send same webhook payload and verify no duplicate notifications/payment updates
+  - Run `php artisan paymongo:reconcile-marketplace-payments --dry-run` and confirm no mismatches
 
 ### Authorization
 - [ ] Anonymous user cannot access `/super-admin/dashboard`
@@ -125,6 +145,28 @@ Ensure HTTPS is enabled (Let's Encrypt recommended)
 - [ ] 404 page displays for missing resources
 - [ ] 403 page displays for unauthorized access
 - [ ] Logs in `storage/logs/laravel.log` contain events
+
+### Payroll and Attendance Rules
+- [ ] Employee profile includes **Performance Rating** (1-5)
+- [ ] Payroll preparation routes are HR-only (`create`, `store`, `generate-batch`, `request-edit`)
+- [ ] Finance-only routes enforce approval/release actions
+- [ ] Farm-owner-only routes enforce final approval and payment actions
+- [ ] Payroll auto-computes hourly rate from daily/monthly rate
+- [ ] Overtime starts only after **4:30 PM** and requires total work > 8 hours
+- [ ] Overtime multiplier adjusts by rating and completed 30-minute blocks:
+  - Rating 5: +6% per 30m block
+  - Rating 4: +4% per 30m block
+  - Rating 3: +2.5% per 30m block
+  - Rating 2: +1% per 30m block
+  - Rating 1: +0%
+- [ ] Overtime multiplier cap is enforced at **2.00x**
+- [ ] 7:00 AM to 4:00 PM computes correctly with break deduction
+- [ ] Lunch break (12:00 PM to 1:00 PM) auto-deducts if no manual break entered
+- [ ] Manual break crossing midnight (e.g., 11:50 PM to 12:10 AM) deducts correctly
+- [ ] Payroll notes include OT policy details (rating, 30m blocks, multiplier)
+
+### Automated Test Evidence
+- [ ] `PayrollWorkflowAuthorizationTest` passes (role authorization + OT cap behavior)
 
 ---
 
@@ -145,6 +187,7 @@ df -h
 ### Weekly Tasks
 - [ ] Review error logs for patterns
 - [ ] Check payment webhook success rate
+- [ ] Check webhook idempotency statuses (`processed`, `failed`) in `paymongo_webhook_events`
 - [ ] Verify subscription status accuracy
 - [ ] Monitor database performance
 
