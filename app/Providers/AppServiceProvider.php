@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\URL;
 use App\Models\ClientRequest;
 use App\Policies\ClientRequestPolicy;
 
@@ -22,6 +23,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if (app()->environment('production')) {
+            URL::forceScheme('https');
+
+            if (filled(config('app.url'))) {
+                URL::forceRootUrl(config('app.url'));
+            }
+        }
+
         // Register policies
         Gate::policy(ClientRequest::class, ClientRequestPolicy::class);
 
