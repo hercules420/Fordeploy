@@ -1,0 +1,16 @@
+.git
+.gitignore
+.env
+.env.*
+node_modules
+vendor
+storage/logs
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/framework/testing/*
+storage/debugbar
+bootstrap/cache/*.php
+database/database.sqlite
+poultry_consumer_app/build
+poultry_consumer_app/.dart_tool
