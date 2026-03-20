@@ -169,9 +169,15 @@ class EmployeeController extends Controller
 
         Cache::forget($this->statsCacheKey($farmOwner->id));
 
-        $message = $verificationEmailSent
-            ? 'Employee added successfully. Verification email sent to their account email.'
-            : 'Employee added successfully, but verification email could not be sent right now. Please check mail settings and resend later.';
+        $mailDriver = (string) config('mail.default', 'log');
+
+        if ($mailDriver === 'log') {
+            $message = 'Employee added successfully. Email delivery is currently in LOG mode, so no inbox email was sent. Use SMTP in production.';
+        } elseif ($verificationEmailSent) {
+            $message = 'Employee added successfully. Verification email sent to their account email.';
+        } else {
+            $message = 'Employee added successfully, but verification email could not be sent right now. Please check mail settings and resend later.';
+        }
 
         if ($verificationUrl) {
             $message .= ' DEV verification link: ' . $verificationUrl;
